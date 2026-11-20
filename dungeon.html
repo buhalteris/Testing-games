@@ -614,18 +614,31 @@ const sfx={
   tap(){if(!AC)return;const n=performance.now();if(n-lastTap<35)return;if(n-lastTap>900)tapI=0;lastTap=n;
     const i=tapI++;tone("sine",mtof(72+PENT[i%5]+12*(((i/5)|0)%2)),.1,.14)},
   buy(){tone("triangle",mtof(76),.09,.12);tone("triangle",mtof(83),.12,.12,AC&&AC.currentTime+.07)},
-  up(){if(!AC)return;const t=AC.currentTime;[72,76,79,84].forEach((m,i)=>tone("triangle",mtof(m),.18,.12,t+i*.06))},
+  up(){if(!AC)return;const t=AC.currentTime;[72,76,79,84].forEach((m,i)=>tone("triangle",mtof(m),.18,.12,t+i*.06));stab(CH7[(mStep>>4)&3],t,.6,.9,3800,sfxG)},
   unlock(){if(!AC)return;const t=AC.currentTime;[79,83,86,91].forEach((m,i)=>tone("sine",mtof(m),.5,.14,t+i*.09))},
   gold(){tone("sine",mtof(96),.5,.08,0,0,mtof(100))},
   sparkle(){if(!AC)return;const t=AC.currentTime;for(let i=0;i<8;i++)tone("sine",mtof(84+PENT[i%5]+12*(i>4?1:0)),.25,.1,t+i*.05)},
   asc(){if(!AC)return;const t=AC.currentTime;tone("sawtooth",110,1.4,.1,t,0,880);[60,67,72,79,84].forEach((m,i)=>tone("sine",mtof(m),1.2,.1,t+.5+i*.12))}
 };
+function stab(ns,t,dur,vol,cut,dest){
+  if(!AC)return;t=t||AC.currentTime;
+  const f=AC.createBiquadFilter();f.type="lowpass";f.Q.value=4;
+  f.frequency.setValueAtTime(cut,t);f.frequency.exponentialRampToValueAtTime(Math.max(300,cut*.15),t+dur);
+  const g=AC.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.012*vol,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  f.connect(g);g.connect(dest||musicG);
+  ns.forEach(n=>[-7,7].forEach(d=>{const o=AC.createOscillator();o.type="sawtooth";o.frequency.value=mtof(n+12);o.detune.value=d;o.connect(f);o.start(t);o.stop(t+dur+.05)}));
+}
+const CH7=[[57,60,64,67],[53,57,60,64],[48,52,55,59],[55,59,62,64]];
 // generative music: Am - F - C - G. More layers appear as you progress.
 const CH=[[57,60,64],[53,57,60],[48,52,55],[55,59,62]],SP=60/78/2;
 const musStage=()=>Math.min(6,Math.floor(Math.log10(S.life+1)/1.2));
 function playStep(s,t){
   const ch=CH[(s>>4)&3],st=musStage();
   if(s%16===0)ch.forEach(n=>pad(mtof(n-12),t,SP*17,.05));
+  const c7=CH7[(s>>4)&3];
+  if(st===1&&s%16===8)stab(c7,t,SP*5,.7,1800);
+  if(st>=2&&s%8===0)stab(c7,t,SP*2.2,.8,2500+st*400);
+  if(st>=4&&(s%8===3||s%8===6))stab(c7,t,SP*1.2,.6,3500);
   if(st>=1&&s%(st>=2?2:4)===0){let n=ch[(s>>1)%3]+12;if(st>=3&&s%8>=4)n+=12;tone("triangle",mtof(n),.35,.05,t,musicG)}
   if(st>=3&&s%8===0)tone("sine",mtof(ch[0]-24),SP*3,.16,t,musicG);
   if(st>=4&&s%8===4)tone("sine",mtof(ch[0]-24),SP*2,.12,t,musicG);
