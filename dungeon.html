@@ -50,8 +50,8 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 .row{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--panel2);font-size:14px}
 .toggle{background:var(--panel);color:var(--txt);border:1px solid var(--panel2);border-radius:20px;padding:6px 14px;font:inherit;font-size:13px}
 .toggle.on{border-color:var(--acc);color:var(--acc)}
-#nav{display:flex;background:var(--panel);border-top:1px solid var(--panel2)}
-#nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 0 12px;font:inherit;font-size:11px;position:relative}
+#nav{display:flex;overflow-x:auto;background:var(--panel);border-top:1px solid var(--panel2)}
+#nav button{flex:1 0 46px;background:none;border:0;color:var(--mut);padding:10px 0 12px;font:inherit;font-size:11px;position:relative}
 #nav button.on{color:var(--acc)}
 #nav button span{display:block;font-size:20px}
 #nav button.new::after{content:"";position:absolute;top:6px;right:28%;width:9px;height:9px;border-radius:50%;background:#ff4d6d}
@@ -71,6 +71,31 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 .sv{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--panel2)}
 .sv .nm{flex:1;font-size:14px}
 .sv small{display:block;color:var(--mut);font-size:12px}
+[hidden]{display:none!important}
+#wm{width:100%;height:auto;display:block;border-radius:14px;background:radial-gradient(ellipse at 50% 30%,#2b2540,#171322)}
+.seg{fill:none;stroke:var(--mut);stroke-width:3;stroke-dasharray:2 7;stroke-linecap:round;opacity:.25}
+.seg.on{opacity:.9;stroke:var(--acc)}
+.node{cursor:pointer}
+.node .disc{fill:var(--panel2);stroke:var(--mut);stroke-width:2}
+.node .ring{fill:none;stroke:var(--acc);stroke-width:2;opacity:0;transform-box:fill-box;transform-origin:center}
+.node.new .disc{stroke:var(--acc)}
+.node.new .ring{animation:ringp 1.4s ease-out infinite}
+.node.new .em{filter:brightness(0)}
+.node.fog{opacity:.4;cursor:default}
+.node.caught .disc{stroke:#51cf66}
+.node .lbl{fill:var(--txt);font:700 11px system-ui,sans-serif;text-anchor:middle}
+.node .sub{fill:var(--mut);font:600 10px system-ui,sans-serif;text-anchor:middle}
+@keyframes ringp{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.35);opacity:0}}
+.card.lockc{opacity:.75;border:1px dashed var(--mut)}
+#enc{position:fixed;inset:0;z-index:15;background:rgba(10,8,16,.88);display:flex;align-items:center;justify-content:center;padding:16px}
+.encbox{width:min(92vw,420px);display:flex;flex-direction:column;gap:10px;text-align:center}
+#enct{font-size:20px;font-weight:800}
+#encp{font-size:22px;letter-spacing:6px;color:var(--acc);min-height:28px}
+.encbar{height:8px;border-radius:4px;background:var(--panel2);overflow:hidden}
+#encf{display:block;height:100%;width:100%;background:var(--acc)}
+#arena{position:relative;height:min(52vh,340px);background:#1b1726;border-radius:16px;border:1px solid var(--panel2);overflow:hidden;touch-action:none}
+#crit{position:absolute;left:0;top:0;border:0;background:none;padding:0;line-height:1;touch-action:none;cursor:pointer}
+.encx{display:flex;gap:10px;justify-content:center}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
 .big.stop{background:#ff6b6b}
 .hint{color:var(--mut);font-size:13px;text-align:center;padding:14px}
@@ -83,6 +108,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
   <div id="panel">
     <div class="tab" id="t-build"></div>
     <div class="tab" id="t-ups"></div>
+    <div class="tab" id="t-map"></div>
     <div class="tab" id="t-asc"></div>
     <div class="tab" id="t-stats"></div>
     <div class="tab" id="t-ach"></div>
@@ -92,6 +118,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
   </div>
   <div id="nav">
     <button data-t="build" hidden><span>🧹</span>Crew</button>
+    <button data-t="map" hidden><span>🗺️</span>Map</button>
     <button data-t="ups" hidden><span>🎒</span>Gear</button>
     <button data-t="lab" hidden><span>🔨</span>Forge</button>
     <button data-t="ach" hidden><span>🏆</span>Awards</button>
@@ -101,6 +128,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
   </div>
 </div>
 <div id="toast"></div>
+<div id="enc" hidden><div class="encbox"><div id="enct"></div><div id="encp"></div><div class="encbar"><i id="encf"></i></div><div id="arena"><button id="crit" hidden></button></div><div class="encx"><button class="toggle" id="encretry" hidden>Try again</button><button class="toggle" id="encclose">Close</button></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 "use strict";
@@ -152,12 +180,12 @@ UPS.sort((a,b)=>a.cost-b.cost);
 
 /* ---------- state ---------- */
 const fresh=()=>({e:0,run:0,life:0,g:Object.fromEntries(GENS.map(g=>[g.id,0])),ups:{},seenG:{},seenU:{},
-  cores:0,taps:0,lab:{},ach:{},golds:0,asc:0,tabs:{},opts:{auto:1,buyer:1,music:1,sfx:1},last:Date.now(),t0:Date.now()});
+  cores:0,taps:0,lab:{},ach:{},golds:0,caught:{},asc:0,tabs:{},opts:{auto:1,buyer:1,music:1,sfx:1},last:Date.now(),t0:Date.now()});
 let S=fresh();
 function load(){
   try{
     const j=JSON.parse(localStorage.getItem("dungeon1")||"null");
-    if(j){S=Object.assign(fresh(),j);S.g=Object.assign(fresh().g,j.g);S.opts=Object.assign(fresh().opts,j.opts||{});}
+    if(j){S=Object.assign(fresh(),j);S.g=Object.assign(fresh().g,j.g);S.opts=Object.assign(fresh().opts,j.opts||{});GENS.forEach(g=>{if(S.g[g.id]>0)S.caught[g.id]=1});}
   }catch(e){}
 }
 function save(){S.last=Date.now();try{localStorage.setItem("dungeon1",JSON.stringify(S))}catch(e){}}
@@ -183,7 +211,7 @@ function tap(n,x,y){
   const p=tapPower()*n;gain(p);S.taps+=n;
   if(x!==undefined)floaty("+"+fmt(p),x,y);
 }
-function buyGen(g){const c=gCost(g);if(S.e>=c){S.e-=c;S.g[g.id]++;return true}return false}
+function buyGen(g){if(!S.caught[g.id])return false;const c=gCost(g);if(S.e>=c){S.e-=c;S.g[g.id]++;return true}return false}
 function buyUp(u){if(!S.ups[u.id]&&S.e>=u.cost){S.e-=u.cost;S.ups[u.id]=1;toast("Unlocked: "+u.name);sfx.up();refresh(true);return true}return false}
 const armed={};
 function ask(k,msg){if(armed[k]){armed[k]=0;return true}armed[k]=1;toast(msg);setTimeout(()=>armed[k]=0,4000);return false}
@@ -219,7 +247,7 @@ function mkCard(icon,name,desc,onclick){
 }
 function initUI(){
   const tb=$("#t-build");tb.innerHTML="<h3>Crew</h3>";
-  GENS.forEach(g=>{const el=mkCard(g.icon,g.name,"",()=>{if(buyGen(g)){sfx.buy();upd()}});tb.appendChild(el);gEls[g.id]=el});
+  GENS.forEach(g=>{const el=mkCard(g.icon,g.name,"",()=>{if(!S.caught[g.id]){toast("🗺️ Catch the "+g.name+" on the World Map first!");showTab("map");return}if(buyGen(g)){sfx.buy();upd()}});tb.appendChild(el);gEls[g.id]=el});
   const tu=$("#t-ups");tu.innerHTML="<h3>Gear</h3>";
   UPS.forEach(u=>{const el=mkCard(u.icon,u.name,u.desc,()=>buyUp(u)&&upd());tu.appendChild(el);uEls[u.id]=el});
   document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>showTab(b.dataset.t));
@@ -230,11 +258,11 @@ function showTab(t){
   document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("on",e.id==="t-"+t));
   document.querySelectorAll("#nav button").forEach(b=>{b.classList.toggle("on",b.dataset.t===t);if(b.dataset.t===t)b.classList.remove("new")});
   $("#starthint").style.display="none";
-  if(["asc","stats","ach","lab"].includes(t))renderStatic();if(t==="studio"&&sqCells.k)paintSeq();$("#app").classList.toggle("studio",t==="studio");
+  if(["asc","stats","ach","lab"].includes(t))renderStatic();if(t==="studio"&&sqCells.k)paintSeq();$("#app").classList.toggle("studio",t==="studio"||t==="map");if(t==="map"){paintMap();$("#nav button[data-t=map]").classList.remove("new")}
 }
-const TH={build:12,ups:60,stats:400,ach:5000,studio:25000,asc:1e6,lab:5e6};
+const TH={build:12,map:12,ups:60,stats:400,ach:5000,studio:25000,asc:1e6,lab:5e6};
 const TABRULE=Object.fromEntries(Object.keys(TH).map(t=>[t,()=>S.life>=TH[t]||(t==="asc"&&S.asc>0)]));
-const TABMSG={build:"🧹 Crew unlocked!",ups:"🎒 Gear unlocked!",stats:"📊 Stats unlocked!",asc:"🏅 Promotion unlocked!",ach:"🏆 Achievements unlocked!",lab:"🔨 Forge unlocked!",studio:"🎹 Studio unlocked!"};
+const TABMSG={build:"🧹 Crew unlocked!",ups:"🎒 Gear unlocked!",stats:"📊 Stats unlocked!",asc:"🏅 Promotion unlocked!",ach:"🏆 Achievements unlocked!",lab:"🔨 Forge unlocked!",studio:"🎹 Studio unlocked!",map:"🗺️ World Map unlocked! Catch your crew there"};
 function updTabs(){
   for(const t in TABRULE){
     const b=document.querySelector('#nav button[data-t="'+t+'"]');
@@ -247,7 +275,7 @@ function updTabs(){
 }
 function refresh(){ // reveal logic
   checkAch();
-  for(const g of GENS)if(!S.seenG[g.id]&&S.life>=g.base*0.6)S.seenG[g.id]=1;
+  for(const g of GENS)if(!S.seenG[g.id]&&S.life>=g.base*0.6){S.seenG[g.id]=1;if(!S.caught[g.id]){const mb=document.querySelector('#nav button[data-t="map"]');if(mb&&!mb.hidden&&cur!=="map"){mb.classList.add("new");toast("🗺️ Something new on the map!")}}}
   for(const u of UPS)if(!S.ups[u.id]&&!S.seenU[u.id]&&S.life>=u.cost*0.25&&(!u.req||u.req())){S.seenU[u.id]=1;
     const b=document.querySelector('#nav button[data-t="ups"]');if(cur!=="ups"&&!b.hidden)b.classList.add("new")}
 }
@@ -258,11 +286,12 @@ function upd(){
   $("#buffs").textContent=frenzy>0?"🔥 FRENZY ×7 — "+Math.ceil(frenzy)+"s":"";
   for(const g of GENS){
     const el=gEls[g.id],seen=S.seenG[g.id];el.hidden=!seen;if(!seen)continue;
-    const cost=gCost(g);
-    el.querySelector(".n").textContent=g.name+"  ×"+S.g[g.id];
-    el.querySelector(".d").textContent="+"+fmt(g.cps*genMult(g.id)*allMult())+"/s each";
-    el.querySelector(".c").textContent=fmt(cost);
-    el.classList.toggle("can",S.e>=cost);
+    const cost=gCost(g),got=S.caught[g.id];
+    el.classList.toggle("lockc",!got);
+    el.querySelector(".n").textContent=got?g.name+"  ×"+S.g[g.id]:g.name;
+    el.querySelector(".d").textContent=got?"+"+fmt(g.cps*genMult(g.id)*allMult())+"/s each":"🔒 Catch it on the World Map first";
+    el.querySelector(".c").textContent=got?fmt(cost):"🗺️";
+    el.classList.toggle("can",!!got&&S.e>=cost);
   }
   for(const u of UPS){
     const el=uEls[u.id];
@@ -275,7 +304,7 @@ function upd(){
   }
   updNext();
   updTabs();
-  if(["asc","stats","ach","lab"].includes(cur))renderStatic();
+  if(["asc","stats","ach","lab"].includes(cur))renderStatic();if(cur==="map")paintMap();
 }
 const LAB=[
  {id:"tapc",icon:"🪥",name:"Sharp Bristles",desc:"Cleaning power ×1.5 per level",base:2e6},
@@ -303,6 +332,8 @@ const ACH=[
  {id:"as1",name:"Rebirth",desc:"Get promoted for the first time",ok:()=>S.asc>=1},
  {id:"as2",name:"Dungeon Veteran",desc:"Get promoted 5 times",ok:()=>S.asc>=5},
  {id:"up1",name:"Tinkerer",desc:"Own 10 pieces of gear at once",ok:()=>Object.keys(S.ups).length>=10},
+ {id:"cp1",name:"Naturalist",desc:"Catch 4 different crew types",ok:()=>Object.keys(S.caught).length>=4},
+ {id:"cp2",name:"Full Bestiary",desc:"Catch every crew type",ok:()=>Object.keys(S.caught).length>=GENS.length},
  {id:"st1",name:"Beat Maker",desc:"Play a loop with 10 notes in the Studio",ok:()=>(S.sqBest||0)>=10},
  {id:"st2",name:"Producer",desc:"Play a loop with 30 notes in the Studio",ok:()=>(S.sqBest||0)>=30},
  {id:"lab1",name:"Master Smith",desc:"Try every upgrade in the Forge",ok:()=>Object.keys(S.lab).length>=3}];
@@ -338,7 +369,7 @@ function renderStatic(){
   }else if(cur==="stats"){
     html='<h3>Stats</h3>'+
     row("Lifetime coins",fmt(S.life))+row("This run",fmt(S.run))+row("Cleans",fmt(S.taps))+row("Cleaning power",fmt(tapPower()))+
-    row("Crew hired",totalGens())+row("Medals",S.cores)+(S.tabs.studio?row("Time in Studio",fmtTime(S.sqTime||0)):"")+row("Time played",Math.floor((Date.now()-S.t0)/60000)+" min")+
+    row("Crew hired",totalGens())+row("Crew caught",Object.keys(S.caught).length+" / "+GENS.length)+row("Medals",S.cores)+(S.tabs.studio?row("Time in Studio",fmtTime(S.sqTime||0)):"")+row("Time played",Math.floor((Date.now()-S.t0)/60000)+" min")+
     (S.ups.auto?'<h3>Automation</h3><div class="row"><span>Self-Mopping Mop</span><button class="toggle '+(S.opts.auto?"on":"")+'" data-o="auto">'+(S.opts.auto?"ON":"OFF")+'</button></div>':"")+
     (S.ups.buyer?'<div class="row"><span>Crew Foreman</span><button class="toggle '+(S.opts.buyer?"on":"")+'" data-o="buyer">'+(S.opts.buyer?"ON":"OFF")+'</button></div>':"")+
     '<h3>Data</h3><div class="row"><span>Wipe everything</span><button class="toggle" id="wipe">Reset</button></div>';
@@ -590,7 +621,7 @@ function loop(now){
   if(S.ups.buyer&&S.opts.buyer){buyT+=dt;if(buyT>.5){buyT=0;
     for(let i=GENS.length-1;i>=0;i--){const g=GENS[i];if(S.seenG[g.id]&&buyGen(g))break}}}
   if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=(45+Math.random()*60)/(1+0.25*(S.lab.luck||0));if(!$("#gold"))spawnGold()}}
-  dunFrame(dt);studioFrame();if(studioOn&&cur==="studio")S.sqTime=(S.sqTime||0)+dt;
+  dunFrame(dt);studioFrame();encFrame(dt);if(studioOn&&cur==="studio")S.sqTime=(S.sqTime||0)+dt;
   uiT+=dt;if(uiT>.1){uiT=0;refresh();upd()}
   saveT+=dt;if(saveT>5){saveT=0;save()}
   requestAnimationFrame(loop);
@@ -803,8 +834,100 @@ function initStudio(){
   paintSeq();renderSaved();
 }
 
+/* ---------- world map & catching ---------- */
+const REGIONS=[
+ {id:"imp",name:"Cellar",x:70,y:470},{id:"slime",name:"Sewers",x:270,y:420},{id:"skel",name:"Catacombs",x:90,y:340},{id:"gob",name:"Goblin Camp",x:270,y:290},
+ {id:"ghost",name:"Haunted Wing",x:80,y:210},{id:"golem",name:"Stone Quarry",x:270,y:160},{id:"wiz",name:"Wizard Tower",x:90,y:85},{id:"drag",name:"Dragon Peak",x:260,y:45}];
+const NS="http://www.w3.org/2000/svg";
+function svgEl(n,a,p){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+const mapEls={},segEls=[];
+function initMap(){
+  const el=$("#t-map");
+  el.innerHTML='<h3>World Map</h3><svg id="wm" viewBox="0 0 360 540" role="img" aria-label="World map"></svg><div class="hint" id="mapnote"></div>';
+  const svg=$("#wm");
+  [["⛰️",30,520],["🌲",330,500],["🌲",25,260],["🏰",330,380],["🌋",330,120],["🌲",320,240],["⛰️",30,140]].forEach(d=>{
+    const t=svgEl("text",{x:d[1],y:d[2],"font-size":26,opacity:.18,"text-anchor":"middle"},svg);t.textContent=d[0]});
+  for(let i=0;i<REGIONS.length-1;i++){
+    const a=REGIONS[i],b=REGIONS[i+1];
+    segEls.push(svgEl("path",{d:"M"+a.x+" "+a.y+" C "+a.x+" "+(a.y-45)+", "+b.x+" "+(b.y+45)+", "+b.x+" "+b.y,class:"seg"},svg));
+  }
+  REGIONS.forEach((r,i)=>{
+    const g=svgEl("g",{class:"node fog","data-id":r.id,transform:"translate("+r.x+" "+r.y+")"},svg);
+    svgEl("circle",{class:"ring",r:32},g);svgEl("circle",{class:"disc",r:27},g);
+    const em=svgEl("text",{class:"em","text-anchor":"middle",dy:".35em","font-size":28},g);
+    const lb=svgEl("text",{class:"lbl",y:46},g),sb=svgEl("text",{class:"sub",y:59},g);
+    mapEls[r.id]={g,em,lb,sb};
+  });
+  svg.addEventListener("click",e=>{const g=e.target.closest(".node");if(g)nodeTap(g.dataset.id)});
+  $("#crit").addEventListener("pointerdown",e=>{e.preventDefault();e.stopPropagation();encHit()});
+  $("#encclose").onclick=closeEnc;
+  $("#encretry").onclick=()=>{if(enc)startEnc(GENS[enc.gi].id)};
+  paintMap();
+}
+const mapState=id=>S.caught[id]?"caught":S.seenG[id]?"new":"fog";
+function paintMap(){
+  let n=0;
+  REGIONS.forEach((r,i)=>{
+    const m=mapEls[r.id],st=mapState(r.id),g=GENS[i];
+    m.g.setAttribute("class","node "+st);
+    const e=st==="fog"?"❓":g.icon,l=st==="fog"?"Undiscovered":r.name,
+      s=st==="caught"?g.name+" ×"+S.g[g.id]:st==="new"?"Something lurks here…":"";
+    if(m.em.textContent!==e)m.em.textContent=e;
+    if(m.lb.textContent!==l)m.lb.textContent=l;
+    if(m.sb.textContent!==s)m.sb.textContent=s;
+    if(st==="caught")n++;
+    if(i>0)segEls[i-1].setAttribute("class","seg"+(mapState(r.id)==="fog"?"":" on"));
+  });
+  $("#mapnote").textContent="Caught "+n+" of "+GENS.length+". Tap a glowing spot to catch what lives there. You must catch each crew type once before you can hire it.";
+}
+function nodeTap(id){
+  const st=mapState(id),g=GENS.find(x=>x.id===id);
+  if(st==="new")startEnc(id);
+  else if(st==="caught")toast(g.icon+" "+g.name+" is on your crew");
+  else toast("Keep earning coins to discover this area");
+}
+let enc=null;
+function startEnc(id){
+  const gi=GENS.findIndex(g=>g.id===id);if(gi<0)return;
+  $("#enc").hidden=false;
+  const ar=$("#arena"),size=Math.max(48,72-gi*3);
+  enc={gi,need:3+gi,hits:0,t:0,tmax:10,size,speed:130+gi*22,vx:0,vy:0,turn:0,done:false,aw:ar.clientWidth,ah:ar.clientHeight};
+  enc.x=(enc.aw-size)/2;enc.y=(enc.ah-size)/2;aimEnc();
+  const c=$("#crit");c.textContent=GENS[gi].icon;c.style.width=c.style.height=size+"px";c.style.fontSize=(size*.78)+"px";c.hidden=false;
+  $("#enct").textContent="Catch the "+GENS[gi].name+"!";
+  $("#encretry").hidden=true;paintEnc();
+}
+function aimEnc(){const a=Math.random()*Math.PI*2;enc.vx=Math.cos(a)*enc.speed;enc.vy=Math.sin(a)*enc.speed}
+function paintEnc(){
+  $("#encp").textContent="●".repeat(enc.hits)+"○".repeat(enc.need-enc.hits);
+  $("#encf").style.width=Math.max(0,100*(1-enc.t/enc.tmax))+"%";
+}
+function encHit(){
+  if(!enc||enc.done)return;
+  enc.hits++;enc.speed*=1.18;aimEnc();sfx.buy();
+  if(enc.hits>=enc.need){
+    enc.done=true;const g=GENS[enc.gi];
+    S.caught[g.id]=1;if(S.g[g.id]<1)S.g[g.id]=1;
+    $("#enct").textContent="🎉 Caught! It joins your crew";$("#crit").hidden=true;paintEnc();
+    sfx.sparkle();toast("🎉 Caught the "+g.name+"! You can hire more now");save();upd();
+    setTimeout(closeEnc,1300);
+  }else paintEnc();
+}
+function closeEnc(){$("#enc").hidden=true;enc=null;if(cur==="map")paintMap()}
+function encFrame(dt){
+  if(!enc||enc.done)return;
+  enc.t+=dt;enc.turn+=dt;if(enc.turn>.9){enc.turn=0;aimEnc()}
+  enc.x+=enc.vx*dt;enc.y+=enc.vy*dt;
+  const mx=enc.aw-enc.size,my=enc.ah-enc.size;
+  if(enc.x<0){enc.x=0;enc.vx=Math.abs(enc.vx)}if(enc.x>mx){enc.x=mx;enc.vx=-Math.abs(enc.vx)}
+  if(enc.y<0){enc.y=0;enc.vy=Math.abs(enc.vy)}if(enc.y>my){enc.y=my;enc.vy=-Math.abs(enc.vy)}
+  $("#crit").style.transform="translate("+enc.x.toFixed(1)+"px,"+enc.y.toFixed(1)+"px)";
+  $("#encf").style.width=Math.max(0,100*(1-enc.t/enc.tmax))+"%";
+  if(enc.t>=enc.tmax){enc.done=true;$("#enct").textContent="It got away!";$("#crit").hidden=true;$("#encretry").hidden=false}
+}
+
 /* ---------- boot ---------- */
-load();initUI();dunInit();initStudio();
+load();initUI();dunInit();initStudio();initMap();
 // offline progress
 {
   const away=Math.min((Date.now()-S.last)/1000,8*3600),c=cps();
