@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d1a">
+<title>Spark — a game that grows</title>
+<style>
+:root{--h:220;--bg:hsl(var(--h) 45% 8%);--panel:hsl(var(--h) 35% 14%);--panel2:hsl(var(--h) 35% 19%);--acc:hsl(calc(var(--h) + 120) 90% 62%);--txt:#eef1ff;--mut:#8f97bd}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;touch-action:manipulation;transition:background 2s}
+#app{display:flex;flex-direction:column;height:100%;max-width:560px;margin:0 auto;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#top{padding:14px 16px 4px;text-align:center}
+#energy{font-size:38px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+#rate{color:var(--mut);font-size:14px;min-height:20px}
+#buffs{min-height:22px;font-size:13px;color:var(--acc);font-weight:700}
+#stage{display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:min(34vh,240px);position:relative}
+#orb{width:min(46vw,190px);height:min(46vw,190px);border-radius:50%;border:0;cursor:pointer;
+background:radial-gradient(circle at 35% 30%,#fff,var(--acc) 35%,hsl(calc(var(--h) + 120) 80% 35%) 100%);
+box-shadow:0 0 40px var(--acc),0 0 90px color-mix(in srgb,var(--acc) 40%,transparent);transition:transform .08s;animation:pulse 3s ease-in-out infinite}
+#orb:active,#orb.hit{transform:scale(.92)}
+@keyframes pulse{50%{filter:brightness(1.15)}}
+.fl{position:absolute;pointer-events:none;font-weight:800;font-size:20px;color:#fff;text-shadow:0 0 8px var(--acc);animation:up .9s ease-out forwards;z-index:5}
+@keyframes up{to{transform:translateY(-90px);opacity:0}}
+#gold{position:absolute;width:64px;height:64px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 30%,#fff7c2,#ffc400 55%,#c77800);box-shadow:0 0 25px #ffc400;z-index:6;animation:pulse 1s infinite;font-size:26px}
+#panel{flex:1;overflow-y:auto;padding:8px 12px;-webkit-overflow-scrolling:touch;min-height:0}
+.tab{display:none}.tab.on{display:block}
+.card{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--panel);border:1px solid transparent;border-radius:14px;padding:12px;margin:0 0 8px;color:var(--txt);font:inherit;cursor:pointer;animation:in .4s}
+@keyframes in{from{opacity:0;transform:translateY(10px)}}
+.card[hidden]{display:none}
+.card .i{font-size:26px;width:36px;text-align:center}
+.card .m{flex:1;min-width:0}
+.card .n{font-weight:700}.card .d{font-size:12.5px;color:var(--mut);margin-top:2px}
+.card .c{font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--mut)}
+.card.can{border-color:var(--acc);background:var(--panel2)}
+.card.can .c{color:var(--acc)}
+.card.own{opacity:.55}
+.card:active.can{transform:scale(.98)}
+h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:1px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--panel2);font-size:14px}
+.toggle{background:var(--panel);color:var(--txt);border:1px solid var(--panel2);border-radius:20px;padding:6px 14px;font:inherit;font-size:13px}
+.toggle.on{border-color:var(--acc);color:var(--acc)}
+#nav{display:flex;background:var(--panel);border-top:1px solid var(--panel2)}
+#nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 0 12px;font:inherit;font-size:12px;position:relative}
+#nav button.on{color:var(--acc)}
+#nav button span{display:block;font-size:20px}
+#nav button.new::after{content:"";position:absolute;top:6px;right:28%;width:9px;height:9px;border-radius:50%;background:#ff4d6d}
+#nav button[hidden]{display:none}
+#toast{position:fixed;left:50%;top:max(12px,env(safe-area-inset-top));transform:translate(-50%,-150%);background:var(--acc);color:#0b0d1a;font-weight:800;padding:10px 18px;border-radius:24px;transition:transform .4s;z-index:20;max-width:90vw;text-align:center;font-size:14px}
+#toast.show{transform:translate(-50%,0)}
+.big{width:100%;padding:14px;border-radius:14px;border:0;background:var(--acc);color:#0b0d1a;font:inherit;font-weight:800;font-size:16px;margin:8px 0}
+.big:disabled{opacity:.35}
+.hint{color:var(--mut);font-size:13px;text-align:center;padding:14px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top"><div id="energy">0</div><div id="rate"></div><div id="buffs"></div></div>
+  <div id="stage"><button id="orb" aria-label="tap"></button></div>
+  <div id="panel">
+    <div class="tab" id="t-build"></div>
+    <div class="tab" id="t-ups"></div>
+    <div class="tab" id="t-asc"></div>
+    <div class="tab" id="t-stats"></div>
+    <div class="hint" id="starthint">Tap the orb…</div>
+  </div>
+  <div id="nav">
+    <button data-t="build" hidden><span>⚙️</span>Build</button>
+    <button data-t="ups" hidden><span>⬆️</span>Upgrades</button>
+    <button data-t="asc" hidden><span>🌌</span>Ascend</button>
+    <button data-t="stats" hidden><span>📊</span>Stats</button>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const SUF=["","K","M","B","T","Qa","Qi","Sx","Sp","Oc","No","Dc"];
+function fmt(n){
+  if(n<1000)return n<10&&n%1?n.toFixed(1):Math.floor(n).toString();
+  const i=Math.min(Math.floor(Math.log10(n)/3),SUF.length-1);
+  const v=n/Math.pow(1000,i);
+  return v.toFixed(v<10?2:v<100?1:0)+SUF[i];
+}
+
+/* ---------- game data ---------- */
+const GENS=[
+ {id:"drone",icon:"🛸",name:"Spark Drone",base:15,cps:0.5},
+ {id:"coil",icon:"⚡",name:"Tesla Coil",base:150,cps:4},
+ {id:"reactor",icon:"☢️",name:"Reactor",base:1500,cps:30},
+ {id:"solar",icon:"☀️",name:"Solar Collector",base:15000,cps:220},
+ {id:"forge",icon:"🔥",name:"Star Forge",base:2e5,cps:1800},
+ {id:"dyson",icon:"🪐",name:"Dyson Swarm",base:3e6,cps:15000},
+ {id:"portal",icon:"🌀",name:"Void Portal",base:5e7,cps:130000},
+ {id:"galaxy",icon:"🌌",name:"Galaxy Engine",base:1e9,cps:1.2e6},
+];
+const UPS=[];
+const U=(o)=>UPS.push(o);
+// tap upgrades
+U({id:"t1",icon:"👆",name:"Stronger Fingers",desc:"Tap power ×2",cost:50,tap:2});
+U({id:"t2",icon:"🧤",name:"Static Gloves",desc:"Tap power ×2",cost:500,tap:2,req:()=>S.ups.t1});
+U({id:"t3",icon:"🤜",name:"Lightning Grip",desc:"Tap power ×3",cost:2e4,tap:3,req:()=>S.ups.t2});
+U({id:"t4",icon:"☝️",name:"Finger of God",desc:"Tap power ×5",cost:2e6,tap:5,req:()=>S.ups.t3});
+U({id:"tp1",icon:"🔔",name:"Resonance",desc:"Each tap also gives 3% of your /s",cost:5e3,tapcps:.03,req:()=>S.ups.t2});
+U({id:"tp2",icon:"🎶",name:"Harmony",desc:"Each tap gives +10% of your /s",cost:5e5,tapcps:.07,req:()=>S.ups.tp1});
+// features (kept after ascending)
+U({id:"auto",icon:"🤖",name:"Auto-Tapper",desc:"Taps for you, 3 times a second",cost:1500,keep:1});
+U({id:"auto2",icon:"🦾",name:"Auto-Tapper II",desc:"Auto-taps 10 times a second",cost:3e5,keep:1,req:()=>S.ups.auto});
+U({id:"orbs",icon:"✨",name:"Lure Golden Orbs",desc:"Golden orbs sometimes drift by — grab them!",cost:8000,keep:1});
+U({id:"buyer",icon:"🧠",name:"Overseer AI",desc:"Automatically buys generators for you (toggle in Stats)",cost:25000,keep:1,req:()=>S.ups.auto});
+// per-generator
+GENS.forEach(g=>{
+  U({id:g.id+"1",icon:g.icon,name:"Overclock: "+g.name,desc:g.name+" output ×2",cost:g.base*60,gen:[g.id,2],req:()=>S.g[g.id]>=10});
+  U({id:g.id+"2",icon:g.icon,name:"Nano-tune: "+g.name,desc:g.name+" output ×2",cost:g.base*600,gen:[g.id,2],req:()=>S.g[g.id]>=25});
+  U({id:g.id+"3",icon:g.icon,name:"Singularity: "+g.name,desc:g.name+" output ×3",cost:g.base*12000,gen:[g.id,3],req:()=>S.g[g.id]>=50});
+});
+// global
+U({id:"gl1",icon:"🔌",name:"Energy Grid",desc:"Everything ×1.5",cost:1e5,all:1.5,req:()=>totalGens()>=15});
+U({id:"gl2",icon:"🧬",name:"Quantum Lattice",desc:"Everything ×2",cost:5e7,all:2,req:()=>S.ups.gl1});
+U({id:"gl3",icon:"🕳️",name:"Dark Energy Tap",desc:"Everything ×3",cost:5e10,all:3,req:()=>S.ups.gl2});
+UPS.sort((a,b)=>a.cost-b.cost);
+
+/* ---------- state ---------- */
+const fresh=()=>({e:0,run:0,life:0,g:Object.fromEntries(GENS.map(g=>[g.id,0])),ups:{},seenG:{},seenU:{},
+  cores:0,taps:0,asc:0,tabs:{},opts:{auto:1,buyer:1},last:Date.now(),t0:Date.now()});
+let S=fresh();
+function load(){
+  try{
+    const j=JSON.parse(localStorage.getItem("spark1")||"null");
+    if(j){S=Object.assign(fresh(),j);S.g=Object.assign(fresh().g,j.g);S.opts=Object.assign(fresh().opts,j.opts||{});}
+  }catch(e){}
+}
+function save(){S.last=Date.now();try{localStorage.setItem("spark1",JSON.stringify(S))}catch(e){}}
+
+/* ---------- maths ---------- */
+let frenzy=0; // seconds left
+const totalGens=()=>GENS.reduce((a,g)=>a+S.g[g.id],0);
+const coreMult=()=>1+S.cores*0.1;
+function allMult(){let m=coreMult();for(const u of UPS)if(S.ups[u.id]&&u.all)m*=u.all;return m*(frenzy>0?7:1)}
+function genMult(id){let m=1;for(const u of UPS)if(S.ups[u.id]&&u.gen&&u.gen[0]===id)m*=u.gen[1];return m}
+function cps(){let t=0;for(const g of GENS)t+=S.g[g.id]*g.cps*genMult(g.id);return t*allMult()}
+function tapPower(){
+  let m=1,pc=0;
+  for(const u of UPS)if(S.ups[u.id]){if(u.tap)m*=u.tap;if(u.tapcps)pc+=u.tapcps}
+  return m*allMult()+cps()*pc;
+}
+const gCost=g=>Math.ceil(g.base*Math.pow(1.15,S.g[g.id]));
+const coresOnAscend=()=>Math.floor(Math.sqrt(S.run/1e6));
+
+/* ---------- actions ---------- */
+function gain(n){S.e+=n;S.run+=n;S.life+=n}
+function tap(n,x,y){
+  const p=tapPower()*n;gain(p);S.taps+=n;
+  if(x!==undefined)floaty("+"+fmt(p),x,y);
+}
+function buyGen(g){const c=gCost(g);if(S.e>=c){S.e-=c;S.g[g.id]++;return true}return false}
+function buyUp(u){if(!S.ups[u.id]&&S.e>=u.cost){S.e-=u.cost;S.ups[u.id]=1;toast("Unlocked: "+u.name);refresh(true);return true}return false}
+function ascend(){
+  const c=coresOnAscend();if(c<1)return;
+  if(!confirm("Ascend? You restart but gain "+c+" Cores (+"+c*10+"% to everything, permanently).\nFeature upgrades are kept."))return;
+  S.cores+=c;S.asc++;S.e=0;S.run=0;
+  GENS.forEach(g=>S.g[g.id]=0);
+  for(const u of UPS)if(!u.keep)delete S.ups[u.id];
+  S.seenG={};S.seenU={};
+  save();refresh(true);toast("Ascended! +"+c+" Cores 🌌");
+}
+
+/* ---------- UI ---------- */
+const stage=$("#stage"),orb=$("#orb");
+function floaty(txt,x,y){
+  if(stage.querySelectorAll(".fl").length>14)return;
+  const r=stage.getBoundingClientRect(),d=document.createElement("div");
+  d.className="fl";d.textContent=txt;d.style.left=(x-r.left-20+Math.random()*30-15)+"px";d.style.top=(y-r.top-20)+"px";
+  stage.appendChild(d);setTimeout(()=>d.remove(),900);
+}
+let toastT;
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove("show"),2600)}
+
+orb.addEventListener("pointerdown",ev=>{
+  ev.preventDefault();orb.classList.add("hit");setTimeout(()=>orb.classList.remove("hit"),70);
+  tap(1,ev.clientX,ev.clientY);if(navigator.vibrate&&S.life<200)navigator.vibrate(8);
+});
+orb.addEventListener("contextmenu",e=>e.preventDefault());
+
+// build generator cards
+const gEls={},uEls={};
+function mkCard(icon,name,desc,onclick){
+  const b=document.createElement("button");b.className="card";b.hidden=true;
+  b.innerHTML='<div class="i"></div><div class="m"><div class="n"></div><div class="d"></div></div><div class="c"></div>';
+  b.querySelector(".i").textContent=icon;b.querySelector(".n").textContent=name;b.querySelector(".d").textContent=desc;
+  b.onclick=onclick;return b;
+}
+function initUI(){
+  const tb=$("#t-build");tb.innerHTML="<h3>Generators</h3>";
+  GENS.forEach(g=>{const el=mkCard(g.icon,g.name,"",()=>{if(buyGen(g))upd()});tb.appendChild(el);gEls[g.id]=el});
+  const tu=$("#t-ups");tu.innerHTML="<h3>Upgrades</h3>";
+  UPS.forEach(u=>{const el=mkCard(u.icon,u.name,u.desc,()=>buyUp(u)&&upd());tu.appendChild(el);uEls[u.id]=el});
+  document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>showTab(b.dataset.t));
+}
+let cur=null;
+function showTab(t){
+  cur=t;
+  document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("on",e.id==="t-"+t));
+  document.querySelectorAll("#nav button").forEach(b=>{b.classList.toggle("on",b.dataset.t===t);if(b.dataset.t===t)b.classList.remove("new")});
+  $("#starthint").style.display="none";
+  if(t==="asc"||t==="stats")renderStatic();
+}
+const TABRULE={build:()=>S.life>=12,ups:()=>S.life>=60,stats:()=>S.life>=400,asc:()=>S.life>=1e6||S.asc>0};
+const TABMSG={build:"⚙️ Generators unlocked!",ups:"⬆️ Upgrades unlocked!",stats:"📊 Stats unlocked!",asc:"🌌 Ascension unlocked!"};
+function updTabs(){
+  for(const t in TABRULE){
+    const b=document.querySelector('#nav button[data-t="'+t+'"]');
+    if(TABRULE[t]()&&b.hidden){
+      b.hidden=false;
+      if(!S.tabs[t]){S.tabs[t]=1;toast(TABMSG[t]);b.classList.add("new")}
+      if(!cur)showTab(t);
+    }
+  }
+}
+function refresh(){ // reveal logic
+  for(const g of GENS)if(!S.seenG[g.id]&&S.life>=g.base*0.6)S.seenG[g.id]=1;
+  for(const u of UPS)if(!S.ups[u.id]&&!S.seenU[u.id]&&S.life>=u.cost*0.25&&(!u.req||u.req())){S.seenU[u.id]=1;
+    const b=document.querySelector('#nav button[data-t="ups"]');if(cur!=="ups"&&!b.hidden)b.classList.add("new")}
+}
+function upd(){
+  $("#energy").textContent=fmt(S.e);
+  const c=cps();
+  $("#rate").textContent=c>0?fmt(c)+" per second":"";
+  $("#buffs").textContent=frenzy>0?"🔥 FRENZY ×7 — "+Math.ceil(frenzy)+"s":"";
+  for(const g of GENS){
+    const el=gEls[g.id],seen=S.seenG[g.id];el.hidden=!seen;if(!seen)continue;
+    const cost=gCost(g);
+    el.querySelector(".n").textContent=g.name+"  ×"+S.g[g.id];
+    el.querySelector(".d").textContent="+"+fmt(g.cps*genMult(g.id)*allMult())+"/s each";
+    el.querySelector(".c").textContent=fmt(cost);
+    el.classList.toggle("can",S.e>=cost);
+  }
+  for(const u of UPS){
+    const el=uEls[u.id];
+    const owned=S.ups[u.id];
+    el.hidden=!(owned||S.seenU[u.id]);
+    el.classList.toggle("own",!!owned);
+    el.classList.toggle("can",!owned&&S.e>=u.cost);
+    el.querySelector(".c").textContent=owned?"✓":fmt(u.cost);
+    if(owned)el.parentNode.appendChild(el); // owned sink to bottom
+  }
+  // hue by progress
+  const h=(220+Math.max(0,Math.log10(S.life+1))*28+S.asc*40)%360;
+  document.documentElement.style.setProperty("--h",h.toFixed(0));
+  updTabs();
+  if(cur==="asc"||cur==="stats")renderStatic();
+}
+let lastStatic="";
+function renderStatic(){
+  let html="";
+  if(cur==="asc"){
+    const c=coresOnAscend();
+    html='<h3>Ascension</h3><div class="row"><span>Cores</span><b>'+S.cores+' (+'+S.cores*10+'%)</b></div>'+
+    '<div class="row"><span>Times ascended</span><b>'+S.asc+'</b></div>'+
+    '<div class="hint">Reset your run to earn Cores. Each Core gives +10% to everything, forever. You earn more the further you get (1 Core per million energy, square-root scaling).</div>'+
+    '<button class="big" id="ascbtn" '+(c<1?"disabled":"")+'>Ascend for '+c+' Core'+(c==1?"":"s")+'</button>';
+  }else if(cur==="stats"){
+    html='<h3>Stats</h3>'+
+    row("Lifetime energy",fmt(S.life))+row("This run",fmt(S.run))+row("Taps",fmt(S.taps))+row("Tap power",fmt(tapPower()))+
+    row("Generators owned",totalGens())+row("Cores",S.cores)+row("Time played",Math.floor((Date.now()-S.t0)/60000)+" min")+
+    (S.ups.auto?'<h3>Automation</h3><div class="row"><span>Auto-Tapper</span><button class="toggle '+(S.opts.auto?"on":"")+'" data-o="auto">'+(S.opts.auto?"ON":"OFF")+'</button></div>':"")+
+    (S.ups.buyer?'<div class="row"><span>Overseer AI</span><button class="toggle '+(S.opts.buyer?"on":"")+'" data-o="buyer">'+(S.opts.buyer?"ON":"OFF")+'</button></div>':"")+
+    '<h3>Data</h3><div class="row"><span>Wipe everything</span><button class="toggle" id="wipe">Reset</button></div>';
+  }
+  if(html===lastStatic)return;lastStatic=html;
+  $("#t-"+cur).innerHTML=html;
+}
+const row=(a,b)=>'<div class="row"><span>'+a+'</span><b>'+b+'</b></div>';
+document.addEventListener("click",e=>{
+  const t=e.target;
+  if(t.id==="ascbtn")ascend();
+  if(t.dataset&&t.dataset.o){S.opts[t.dataset.o]=S.opts[t.dataset.o]?0:1;lastStatic="";renderStatic()}
+  if(t.id==="wipe"&&confirm("Delete all progress?")){localStorage.removeItem("spark1");S=fresh();lastStatic="";location.reload()}
+});
+
+/* ---------- golden orb ---------- */
+let goldT=30+Math.random()*40;
+function spawnGold(){
+  const b=document.createElement("button");b.id="gold";b.textContent="⭐";
+  const r=stage.getBoundingClientRect();
+  b.style.left=(Math.random()*(r.width-70))+"px";b.style.top=(Math.random()*(r.height-70))+"px";
+  const kill=setTimeout(()=>b.remove(),9000);
+  b.onpointerdown=e=>{
+    e.preventDefault();clearTimeout(kill);b.remove();
+    if(Math.random()<.5){const g=Math.max(cps()*90,tapPower()*30);gain(g);toast("⭐ Lucky! +"+fmt(g))}
+    else{frenzy=20;toast("🔥 Frenzy! ×7 for 20s")}
+    upd();
+  };
+  stage.appendChild(b);
+}
+
+/* ---------- loop ---------- */
+let prev=performance.now(),uiT=0,saveT=0,autoAcc=0,buyT=0;
+function loop(now){
+  const dt=Math.min((now-prev)/1000,1);prev=now;
+  gain(cps()*dt);
+  if(frenzy>0)frenzy=Math.max(0,frenzy-dt);
+  if(S.ups.auto&&S.opts.auto){autoAcc+=dt*(S.ups.auto2?10:3);const n=Math.floor(autoAcc);if(n){autoAcc-=n;tap(n)}}
+  if(S.ups.buyer&&S.opts.buyer){buyT+=dt;if(buyT>.5){buyT=0;
+    for(let i=GENS.length-1;i>=0;i--){const g=GENS[i];if(S.seenG[g.id]&&buyGen(g))break}}}
+  if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=45+Math.random()*60;if(!$("#gold"))spawnGold()}}
+  uiT+=dt;if(uiT>.1){uiT=0;refresh();upd()}
+  saveT+=dt;if(saveT>5){saveT=0;save()}
+  requestAnimationFrame(loop);
+}
+
+/* ---------- boot ---------- */
+load();initUI();
+// offline progress
+{
+  const away=Math.min((Date.now()-S.last)/1000,8*3600),c=cps();
+  if(away>60&&c>0){const g=c*away*0.5;gain(g);setTimeout(()=>toast("Welcome back! +"+fmt(g)+" while away"),400)}
+}
+refresh();upd();
+if(S.life>=12){const f=["build","ups","stats","asc"].find(t=>TABRULE[t]());showTab(f)}
+document.addEventListener("visibilitychange",()=>{if(document.hidden)save();else prev=performance.now()});
+addEventListener("pagehide",save);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
