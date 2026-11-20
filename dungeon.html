@@ -338,7 +338,7 @@ function renderStatic(){
   }else if(cur==="stats"){
     html='<h3>Stats</h3>'+
     row("Lifetime coins",fmt(S.life))+row("This run",fmt(S.run))+row("Cleans",fmt(S.taps))+row("Cleaning power",fmt(tapPower()))+
-    row("Crew hired",totalGens())+row("Medals",S.cores)+row("Time played",Math.floor((Date.now()-S.t0)/60000)+" min")+
+    row("Crew hired",totalGens())+row("Medals",S.cores)+(S.tabs.studio?row("Time in Studio",fmtTime(S.sqTime||0)):"")+row("Time played",Math.floor((Date.now()-S.t0)/60000)+" min")+
     (S.ups.auto?'<h3>Automation</h3><div class="row"><span>Self-Mopping Mop</span><button class="toggle '+(S.opts.auto?"on":"")+'" data-o="auto">'+(S.opts.auto?"ON":"OFF")+'</button></div>':"")+
     (S.ups.buyer?'<div class="row"><span>Crew Foreman</span><button class="toggle '+(S.opts.buyer?"on":"")+'" data-o="buyer">'+(S.opts.buyer?"ON":"OFF")+'</button></div>':"")+
     '<h3>Data</h3><div class="row"><span>Wipe everything</span><button class="toggle" id="wipe">Reset</button></div>';
@@ -590,7 +590,7 @@ function loop(now){
   if(S.ups.buyer&&S.opts.buyer){buyT+=dt;if(buyT>.5){buyT=0;
     for(let i=GENS.length-1;i>=0;i--){const g=GENS[i];if(S.seenG[g.id]&&buyGen(g))break}}}
   if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=(45+Math.random()*60)/(1+0.25*(S.lab.luck||0));if(!$("#gold"))spawnGold()}}
-  dunFrame(dt);studioFrame();
+  dunFrame(dt);studioFrame();if(studioOn)S.sqTime=(S.sqTime||0)+dt;
   uiT+=dt;if(uiT>.1){uiT=0;refresh();upd()}
   saveT+=dt;if(saveT>5){saveT=0;save()}
   requestAnimationFrame(loop);
@@ -742,6 +742,7 @@ function renderSaved(){
       '<button class="toggle" data-sq="load:'+i+'">Load</button><button class="toggle" data-sq="del:'+i+'">Delete</button></div>';
   }).join("");
 }
+function fmtTime(s){s=Math.floor(s);const h=s/3600|0,m=(s%3600)/60|0,x=s%60;return h?h+"h "+m+"m":m?m+"m "+x+"s":x+"s"}
 function toggleStudio(){
   initAudio();if(!AC)return;
   studioOn=!studioOn;
