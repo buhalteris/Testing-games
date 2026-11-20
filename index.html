@@ -12,6 +12,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 #app{display:flex;flex-direction:column;height:100%;max-width:560px;margin:0 auto;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 #top{padding:14px 16px 4px;text-align:center}
 #energy{font-size:38px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+#top{position:relative}
+#snd{position:absolute;top:8px;right:10px;display:flex;gap:6px}
+#snd button{width:36px;height:36px;border-radius:50%;border:1px solid var(--panel2);background:var(--panel);font-size:16px;padding:0}
+#snd button.off{opacity:.4}
 #rate{color:var(--mut);font-size:14px;min-height:20px}
 #buffs{min-height:22px;font-size:13px;color:var(--acc);font-weight:700}
 #stage{display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:min(34vh,240px);position:relative}
@@ -55,7 +59,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 </head>
 <body>
 <div id="app">
-  <div id="top"><div id="energy">0</div><div id="rate"></div><div id="buffs"></div></div>
+  <div id="top"><div id="snd"><button id="bmus" aria-label="music">🎵</button><button id="bsfx" aria-label="sound effects">🔊</button></div><div id="energy">0</div><div id="rate"></div><div id="buffs"></div></div>
   <div id="stage"><button id="orb" aria-label="tap"></button></div>
   <div id="panel">
     <div class="tab" id="t-build"></div>
@@ -122,7 +126,7 @@ UPS.sort((a,b)=>a.cost-b.cost);
 
 /* ---------- state ---------- */
 const fresh=()=>({e:0,run:0,life:0,g:Object.fromEntries(GENS.map(g=>[g.id,0])),ups:{},seenG:{},seenU:{},
-  cores:0,taps:0,asc:0,tabs:{},opts:{auto:1,buyer:1},last:Date.now(),t0:Date.now()});
+  cores:0,taps:0,asc:0,tabs:{},opts:{auto:1,buyer:1,music:1,sfx:1},last:Date.now(),t0:Date.now()});
 let S=fresh();
 function load(){
   try{
@@ -154,7 +158,7 @@ function tap(n,x,y){
   if(x!==undefined)floaty("+"+fmt(p),x,y);
 }
 function buyGen(g){const c=gCost(g);if(S.e>=c){S.e-=c;S.g[g.id]++;return true}return false}
-function buyUp(u){if(!S.ups[u.id]&&S.e>=u.cost){S.e-=u.cost;S.ups[u.id]=1;toast("Unlocked: "+u.name);refresh(true);return true}return false}
+function buyUp(u){if(!S.ups[u.id]&&S.e>=u.cost){S.e-=u.cost;S.ups[u.id]=1;toast("Unlocked: "+u.name);sfx.up();refresh(true);return true}return false}
 const armed={};
 function ask(k,msg){if(armed[k]){armed[k]=0;return true}armed[k]=1;toast(msg);setTimeout(()=>armed[k]=0,4000);return false}
 function ascend(){
@@ -164,7 +168,7 @@ function ascend(){
   GENS.forEach(g=>S.g[g.id]=0);
   for(const u of UPS)if(!u.keep)delete S.ups[u.id];
   S.seenG={};S.seenU={};
-  save();refresh(true);toast("Ascended! +"+c+" Cores 🌌");
+  save();refresh(true);toast("Ascended! +"+c+" Cores 🌌");sfx.asc();
 }
 
 /* ---------- UI ---------- */
@@ -180,7 +184,7 @@ function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");cl
 
 orb.addEventListener("pointerdown",ev=>{
   ev.preventDefault();orb.classList.add("hit");setTimeout(()=>orb.classList.remove("hit"),70);
-  tap(1,ev.clientX,ev.clientY);if(navigator.vibrate&&S.life<200)navigator.vibrate(8);
+  tap(1,ev.clientX,ev.clientY);sfx.tap();if(navigator.vibrate&&S.life<200)navigator.vibrate(8);
 });
 orb.addEventListener("contextmenu",e=>e.preventDefault());
 
@@ -194,7 +198,7 @@ function mkCard(icon,name,desc,onclick){
 }
 function initUI(){
   const tb=$("#t-build");tb.innerHTML="<h3>Generators</h3>";
-  GENS.forEach(g=>{const el=mkCard(g.icon,g.name,"",()=>{if(buyGen(g))upd()});tb.appendChild(el);gEls[g.id]=el});
+  GENS.forEach(g=>{const el=mkCard(g.icon,g.name,"",()=>{if(buyGen(g)){sfx.buy();upd()}});tb.appendChild(el);gEls[g.id]=el});
   const tu=$("#t-ups");tu.innerHTML="<h3>Upgrades</h3>";
   UPS.forEach(u=>{const el=mkCard(u.icon,u.name,u.desc,()=>buyUp(u)&&upd());tu.appendChild(el);uEls[u.id]=el});
   document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>showTab(b.dataset.t));
@@ -214,7 +218,7 @@ function updTabs(){
     const b=document.querySelector('#nav button[data-t="'+t+'"]');
     if(TABRULE[t]()&&b.hidden){
       b.hidden=false;
-      if(!S.tabs[t]){S.tabs[t]=1;toast(TABMSG[t]);b.classList.add("new")}
+      if(!S.tabs[t]){S.tabs[t]=1;toast(TABMSG[t]);sfx.unlock();b.classList.add("new")}
       if(!cur)showTab(t);
     }
   }
@@ -288,12 +292,12 @@ function spawnGold(){
   b.style.left=(Math.random()*(r.width-70))+"px";b.style.top=(Math.random()*(r.height-70))+"px";
   const kill=setTimeout(()=>b.remove(),9000);
   b.onpointerdown=e=>{
-    e.preventDefault();clearTimeout(kill);b.remove();
+    e.preventDefault();sfx.sparkle();clearTimeout(kill);b.remove();
     if(Math.random()<.5){const g=Math.max(cps()*90,tapPower()*30);gain(g);toast("⭐ Lucky! +"+fmt(g))}
     else{frenzy=20;toast("🔥 Frenzy! ×7 for 20s")}
     upd();
   };
-  stage.appendChild(b);
+  stage.appendChild(b);sfx.gold();
 }
 
 /* ---------- loop ---------- */
@@ -310,6 +314,72 @@ function loop(now){
   saveT+=dt;if(saveT>5){saveT=0;save()}
   requestAnimationFrame(loop);
 }
+
+/* ---------- audio (all synthesized, no files) ---------- */
+let AC=null,masterG,musicG,sfxG,mTimer=null,nextT=0,mStep=0,tapI=0,lastTap=0;
+const PENT=[0,2,4,7,9],mtof=m=>440*Math.pow(2,(m-69)/12);
+function initAudio(){
+  if(!AC){
+    try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){return}
+    masterG=AC.createGain();masterG.gain.value=.8;masterG.connect(AC.destination);
+    musicG=AC.createGain();sfxG=AC.createGain();musicG.connect(masterG);sfxG.connect(masterG);
+    applyAudioOpts();
+    mTimer=setInterval(sched,100);
+  }
+  if(AC.state==="suspended")AC.resume();
+}
+function applyAudioOpts(){
+  if(!AC)return;
+  musicG.gain.setTargetAtTime(S.opts.music?.7:0,AC.currentTime,.3);
+  sfxG.gain.setTargetAtTime(S.opts.sfx?1:0,AC.currentTime,.05);
+  nextT=Math.max(nextT,AC.currentTime+.1);
+}
+function tone(type,f,dur,vol,t0,dest,slide){
+  if(!AC)return;t0=t0||AC.currentTime;
+  const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.setValueAtTime(f,t0);
+  if(slide)o.frequency.exponentialRampToValueAtTime(slide,t0+dur);
+  g.gain.setValueAtTime(.0001,t0);g.gain.exponentialRampToValueAtTime(vol,t0+.012);g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
+  o.connect(g);g.connect(dest||sfxG);o.start(t0);o.stop(t0+dur+.05);
+}
+function pad(f,t0,dur,vol){
+  const o=AC.createOscillator(),g=AC.createGain();o.type="triangle";o.frequency.value=f;
+  g.gain.setValueAtTime(.0001,t0);g.gain.linearRampToValueAtTime(vol,t0+dur*.35);g.gain.linearRampToValueAtTime(.0001,t0+dur);
+  o.connect(g);g.connect(musicG);o.start(t0);o.stop(t0+dur+.05);
+}
+const sfx={
+  tap(){if(!AC)return;const n=performance.now();if(n-lastTap<35)return;if(n-lastTap>900)tapI=0;lastTap=n;
+    const i=tapI++;tone("sine",mtof(72+PENT[i%5]+12*(((i/5)|0)%2)),.1,.14)},
+  buy(){tone("triangle",mtof(76),.09,.12);tone("triangle",mtof(83),.12,.12,AC&&AC.currentTime+.07)},
+  up(){if(!AC)return;const t=AC.currentTime;[72,76,79,84].forEach((m,i)=>tone("triangle",mtof(m),.18,.12,t+i*.06))},
+  unlock(){if(!AC)return;const t=AC.currentTime;[79,83,86,91].forEach((m,i)=>tone("sine",mtof(m),.5,.14,t+i*.09))},
+  gold(){tone("sine",mtof(96),.5,.08,0,0,mtof(100))},
+  sparkle(){if(!AC)return;const t=AC.currentTime;for(let i=0;i<8;i++)tone("sine",mtof(84+PENT[i%5]+12*(i>4?1:0)),.25,.1,t+i*.05)},
+  asc(){if(!AC)return;const t=AC.currentTime;tone("sawtooth",110,1.4,.1,t,0,880);[60,67,72,79,84].forEach((m,i)=>tone("sine",mtof(m),1.2,.1,t+.5+i*.12))}
+};
+// generative music: Am - F - C - G. More layers appear as you progress.
+const CH=[[57,60,64],[53,57,60],[48,52,55],[55,59,62]],SP=60/92/2;
+const musStage=()=>Math.min(6,Math.floor(Math.log10(S.life+1)/1.2));
+function playStep(s,t){
+  const ch=CH[(s>>4)&3],st=musStage();
+  if(s%16===0)ch.forEach(n=>pad(mtof(n-12),t,SP*17,.05));
+  if(st>=1&&s%(st>=2?2:4)===0){let n=ch[(s>>1)%3]+12;if(st>=3&&s%8>=4)n+=12;tone("triangle",mtof(n),.35,.05,t,musicG)}
+  if(st>=3&&s%8===0)tone("sine",mtof(ch[0]-24),SP*3,.16,t,musicG);
+  if(st>=4&&s%8===4)tone("sine",mtof(ch[0]-24),SP*2,.12,t,musicG);
+  if(st>=5&&s%4===2)tone("sine",mtof(ch[2]+24),.3,.03,t,musicG);
+  if(frenzy>0&&s%2===1)tone("square",mtof(ch[1]+24),.1,.025,t,musicG);
+}
+function sched(){
+  if(!AC||!S.opts.music||document.hidden)return;
+  if(nextT<AC.currentTime)nextT=AC.currentTime+.05;
+  while(nextT<AC.currentTime+.35){playStep(mStep,nextT);nextT+=SP;mStep++}
+}
+document.addEventListener("pointerdown",initAudio);
+function paintSnd(){
+  $("#bmus").classList.toggle("off",!S.opts.music);$("#bsfx").classList.toggle("off",!S.opts.sfx);
+}
+$("#bmus").onclick=()=>{S.opts.music=S.opts.music?0:1;applyAudioOpts();paintSnd()};
+$("#bsfx").onclick=()=>{S.opts.sfx=S.opts.sfx?0:1;applyAudioOpts();paintSnd();if(S.opts.sfx)sfx.buy()};
+paintSnd();
 
 /* ---------- boot ---------- */
 load();initUI();
