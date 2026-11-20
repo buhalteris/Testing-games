@@ -51,7 +51,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 .toggle{background:var(--panel);color:var(--txt);border:1px solid var(--panel2);border-radius:20px;padding:6px 14px;font:inherit;font-size:13px}
 .toggle.on{border-color:var(--acc);color:var(--acc)}
 #nav{display:flex;background:var(--panel);border-top:1px solid var(--panel2)}
-#nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 0 12px;font:inherit;font-size:12px;position:relative}
+#nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 0 12px;font:inherit;font-size:11px;position:relative}
 #nav button.on{color:var(--acc)}
 #nav button span{display:block;font-size:20px}
 #nav button.new::after{content:"";position:absolute;top:6px;right:28%;width:9px;height:9px;border-radius:50%;background:#ff4d6d}
@@ -60,6 +60,15 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 #toast.show{transform:translate(-50%,0)}
 .big{width:100%;padding:14px;border-radius:14px;border:0;background:var(--acc);color:#0b0d1a;font:inherit;font-weight:800;font-size:16px;margin:8px 0}
 .big:disabled{opacity:.35}
+.sqr{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+.sql{width:46px;font-size:11px;color:var(--mut)}
+.sqg{flex:1;display:grid;grid-template-columns:repeat(16,1fr);gap:2px}
+.sqc{aspect-ratio:1;padding:0;border:0;border-radius:4px;background:var(--panel2);color:#14111c;font:700 10px system-ui}
+.sqc.q{background:#3d3756}
+.sqc.on{background:var(--c)}
+.sqc.ph{filter:brightness(1.7);box-shadow:0 0 0 1px #fff inset}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.big.stop{background:#ff6b6b}
 .hint{color:var(--mut);font-size:13px;text-align:center;padding:14px}
 </style>
 </head>
@@ -74,6 +83,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
     <div class="tab" id="t-stats"></div>
     <div class="tab" id="t-ach"></div>
     <div class="tab" id="t-lab"></div>
+    <div class="tab" id="t-studio"></div>
     <div class="hint" id="starthint">Tap the grime to clean it…</div>
   </div>
   <div id="nav">
@@ -81,6 +91,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
     <button data-t="ups" hidden><span>🎒</span>Gear</button>
     <button data-t="lab" hidden><span>🔨</span>Forge</button>
     <button data-t="ach" hidden><span>🏆</span>Awards</button>
+    <button data-t="studio" hidden><span>🎹</span>Studio</button>
     <button data-t="asc" hidden><span>🏅</span>Promote</button>
     <button data-t="stats" hidden><span>📊</span>Stats</button>
   </div>
@@ -151,7 +162,7 @@ function save(){S.last=Date.now();try{localStorage.setItem("dungeon1",JSON.strin
 let frenzy=0; // seconds left
 const totalGens=()=>GENS.reduce((a,g)=>a+S.g[g.id],0);
 const coreMult=()=>1+S.cores*0.1;
-function allMult(){let m=coreMult()*(1+0.02*achCount());for(const u of UPS)if(S.ups[u.id]&&u.all)m*=u.all;return m*(frenzy>0?7:1)}
+function allMult(){let m=coreMult()*(1+0.02*achCount());for(const u of UPS)if(S.ups[u.id]&&u.all)m*=u.all;return m*(frenzy>0?7:1)*(studioOn?1+grooveAmt():1)}
 function genMult(id){let m=1+0.2*(S.lab.heat||0);for(const u of UPS)if(S.ups[u.id]&&u.gen&&u.gen[0]===id)m*=u.gen[1];return m}
 function cps(){let t=0;for(const g of GENS)t+=S.g[g.id]*g.cps*genMult(g.id);return t*allMult()}
 function tapPower(){
@@ -215,11 +226,11 @@ function showTab(t){
   document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("on",e.id==="t-"+t));
   document.querySelectorAll("#nav button").forEach(b=>{b.classList.toggle("on",b.dataset.t===t);if(b.dataset.t===t)b.classList.remove("new")});
   $("#starthint").style.display="none";
-  if(["asc","stats","ach","lab"].includes(t))renderStatic();
+  if(["asc","stats","ach","lab"].includes(t))renderStatic();if(t==="studio"&&sqCells.k)paintSeq();
 }
-const TH={build:12,ups:60,stats:400,ach:5000,asc:1e6,lab:5e6};
+const TH={build:12,ups:60,stats:400,ach:5000,studio:25000,asc:1e6,lab:5e6};
 const TABRULE=Object.fromEntries(Object.keys(TH).map(t=>[t,()=>S.life>=TH[t]||(t==="asc"&&S.asc>0)]));
-const TABMSG={build:"🧹 Crew unlocked!",ups:"🎒 Gear unlocked!",stats:"📊 Stats unlocked!",asc:"🏅 Promotion unlocked!",ach:"🏆 Achievements unlocked!",lab:"🔨 Forge unlocked!"};
+const TABMSG={build:"🧹 Crew unlocked!",ups:"🎒 Gear unlocked!",stats:"📊 Stats unlocked!",asc:"🏅 Promotion unlocked!",ach:"🏆 Achievements unlocked!",lab:"🔨 Forge unlocked!",studio:"🎹 Studio unlocked!"};
 function updTabs(){
   for(const t in TABRULE){
     const b=document.querySelector('#nav button[data-t="'+t+'"]');
@@ -288,6 +299,8 @@ const ACH=[
  {id:"as1",name:"Rebirth",desc:"Get promoted for the first time",ok:()=>S.asc>=1},
  {id:"as2",name:"Dungeon Veteran",desc:"Get promoted 5 times",ok:()=>S.asc>=5},
  {id:"up1",name:"Tinkerer",desc:"Own 10 pieces of gear at once",ok:()=>Object.keys(S.ups).length>=10},
+ {id:"st1",name:"Beat Maker",desc:"Play a loop with 10 notes in the Studio",ok:()=>(S.sqBest||0)>=10},
+ {id:"st2",name:"Producer",desc:"Play a loop with 30 notes in the Studio",ok:()=>(S.sqBest||0)>=30},
  {id:"lab1",name:"Master Smith",desc:"Try every upgrade in the Forge",ok:()=>Object.keys(S.lab).length>=3}];
 const achCount=()=>Object.keys(S.ach).length;
 function checkAch(){if(!S.tabs.ach)return;for(const a of ACH)if(!S.ach[a.id]&&a.ok()){S.ach[a.id]=1;toast("🏆 "+a.name);sfx.unlock()}}
@@ -573,7 +586,7 @@ function loop(now){
   if(S.ups.buyer&&S.opts.buyer){buyT+=dt;if(buyT>.5){buyT=0;
     for(let i=GENS.length-1;i>=0;i--){const g=GENS[i];if(S.seenG[g.id]&&buyGen(g))break}}}
   if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=(45+Math.random()*60)/(1+0.25*(S.lab.luck||0));if(!$("#gold"))spawnGold()}}
-  dunFrame(dt);
+  dunFrame(dt);studioFrame();
   uiT+=dt;if(uiT>.1){uiT=0;refresh();upd()}
   saveT+=dt;if(saveT>5){saveT=0;save()}
   requestAnimationFrame(loop);
@@ -646,7 +659,7 @@ function playStep(s,t){
   if(frenzy>0&&s%2===1)tone("square",mtof(ch[1]+24),.1,.025,t,musicG);
 }
 function sched(){
-  if(!AC||!S.opts.music||document.hidden)return;
+  if(!AC||!S.opts.music||document.hidden||studioOn)return;
   if(nextT<AC.currentTime)nextT=AC.currentTime+.05;
   while(nextT<AC.currentTime+.35){playStep(mStep,nextT);nextT+=SP;mStep++}
 }
@@ -658,8 +671,108 @@ $("#bmus").onclick=()=>{S.opts.music=S.opts.music?0:1;applyAudioOpts();paintSnd(
 $("#bsfx").onclick=()=>{S.opts.sfx=S.opts.sfx?0:1;applyAudioOpts();paintSnd();if(S.opts.sfx)sfx.buy()};
 paintSnd();
 
+/* ---------- studio mini-game: step sequencer ---------- */
+let studioOn=false,sqNext=0,sqStep=0,sqBar=0,sqPh=-1,SQG=null,noiseBuf=null;
+const sqQ=[],sqCells={};
+const SQROWS=[{k:"k",name:"Kick",col:"#ff6b6b"},{k:"s",name:"Snare",col:"#ffb347"},{k:"h",name:"Hat",col:"#ffe066"},
+ {k:"b",name:"Bass",col:"#51cf66"},{k:"c",name:"Chord",col:"#4dabf7"},{k:"l",name:"Lead",col:"#da77f2"}];
+const PM=[0,3,5,7,10];
+const mkRow=on=>Array.from({length:16},(_,i)=>on.includes(i)?1:0);
+const SQPRE={
+ house:()=>({k:mkRow([0,4,8,12]),s:mkRow([4,12]),h:mkRow([2,6,10,14]),b:mkRow([0,3,6,8,11,14]),c:mkRow([0,10]),l:mkRow([])}),
+ hiphop:()=>({k:mkRow([0,7,10]),s:mkRow([4,12]),h:mkRow([0,2,4,6,8,10,12,14]),b:mkRow([0,7,10]),c:mkRow([0,8]),l:mkRow([])}),
+ empty:()=>({k:mkRow([]),s:mkRow([]),h:mkRow([]),b:mkRow([]),c:mkRow([]),l:mkRow([])}),
+ random:()=>{const o=SQPRE.empty(),p={k:.25,s:.15,h:.4,b:.25,c:.12};
+  for(const r in p)for(let i=0;i<16;i++)o[r][i]=Math.random()<p[r]?1:0;
+  for(let i=0;i<16;i++)o.l[i]=Math.random()<.3?1+(Math.random()*5|0):0;return o}
+};
+const noteCount=()=>{let n=0;for(const r of SQROWS)for(const v of S.seq[r.k])if(v)n++;return n};
+const grooveAmt=()=>Math.min(.5,noteCount()*.01);
+function sqOut(){if(!SQG){SQG=AC.createGain();SQG.gain.value=.9;SQG.connect(masterG)}return SQG}
+function noiseHit(t,o,type,freq,dur,vol){
+  if(!noiseBuf){noiseBuf=AC.createBuffer(1,AC.sampleRate*.5,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+  const src=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();
+  src.buffer=noiseBuf;f.type=type;f.frequency.value=freq;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  src.connect(f);f.connect(g);g.connect(o);src.start(t);src.stop(t+dur+.02);
+}
+function playHit(r,v,t){
+  const o=sqOut(),sd=60/S.bpm/4,ch=CH7[sqBar%4];
+  if(r==="k"){const x=AC.createOscillator(),g=AC.createGain();x.type="sine";x.frequency.setValueAtTime(150,t);x.frequency.exponentialRampToValueAtTime(45,t+.15);
+    g.gain.setValueAtTime(.9,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);x.connect(g);g.connect(o);x.start(t);x.stop(t+.35)}
+  else if(r==="s"){noiseHit(t,o,"bandpass",1800,.18,.5);tone("triangle",190,.1,.25,t,o,120)}
+  else if(r==="h")noiseHit(t,o,"highpass",7000,.05,.35);
+  else if(r==="b")tone("triangle",mtof(ch[0]-24),sd*1.8,.35,t,o);
+  else if(r==="c")stab(ch,t,sd*3,.9,3000,o);
+  else if(r==="l")tone("square",mtof(81+PM[v-1]-12),sd*1.5,.06,t,o);
+}
+function sqSched(){
+  if(!AC||!studioOn)return;
+  if(sqNext<AC.currentTime)sqNext=AC.currentTime+.05;
+  const sd=60/S.bpm/4;
+  while(sqNext<AC.currentTime+.15){
+    for(const r of SQROWS){const v=S.seq[r.k][sqStep];if(v)playHit(r.k,v,sqNext)}
+    sqQ.push({t:sqNext,s:sqStep});if(sqQ.length>64)sqQ.shift();
+    sqNext+=sd;sqStep=(sqStep+1)%16;if(sqStep===0)sqBar++;
+  }
+}
+function setPh(s){
+  if(sqPh>=0)for(const r of SQROWS)sqCells[r.k][sqPh].classList.remove("ph");
+  sqPh=s;if(s>=0)for(const r of SQROWS)sqCells[r.k][s].classList.add("ph");
+}
+function studioFrame(){
+  if(!AC||!studioOn)return;
+  while(sqQ.length&&sqQ[0].t<=AC.currentTime){const q=sqQ.shift();if(cur==="studio")setPh(q.s)}
+}
+function paintSeq(){
+  for(const r of SQROWS)for(let i=0;i<16;i++){const v=S.seq[r.k][i],c=sqCells[r.k][i];c.classList.toggle("on",v>0);c.textContent=r.k==="l"&&v?v:""}
+  $("#bpmv").textContent=S.bpm+" BPM";
+  $("#grv").textContent="+"+Math.round(grooveAmt()*100)+"%"+(studioOn?" active":" when playing");
+}
+function toggleStudio(){
+  initAudio();if(!AC)return;
+  studioOn=!studioOn;
+  if(studioOn){sqStep=0;sqBar=0;sqNext=0;sqQ.length=0;S.sqBest=Math.max(S.sqBest||0,noteCount())}else setPh(-1);
+  const b=$("#sqplay");b.textContent=studioOn?"■ Stop":"▶ Play";b.classList.toggle("stop",studioOn);
+  paintSeq();toast(studioOn?"🎹 Groove on! Bonus applied":"Groove off");
+}
+function initStudio(){
+  if(!S.seq)S.seq=SQPRE.house();if(!S.bpm)S.bpm=96;
+  const el=$("#t-studio");
+  el.innerHTML='<h3>Studio</h3><div class="row"><span>Groove bonus to everything</span><b id="grv"></b></div><div id="seq"></div>'+
+   '<button class="big" id="sqplay">▶ Play</button>'+
+   '<div class="row"><span>Tempo</span><span><button class="toggle" data-sq="slow">−</button> <b id="bpmv"></b> <button class="toggle" data-sq="fast">+</button></span></div>'+
+   '<div class="chips"><button class="toggle" data-sq="p:house">House</button><button class="toggle" data-sq="p:hiphop">Hip-hop</button><button class="toggle" data-sq="p:random">Random</button><button class="toggle" data-sq="p:empty">Clear</button></div>'+
+   '<div class="hint">Tap squares to make a loop, then press Play. Every note adds +1% to everything (max +50%) while the loop plays. The lead row cycles through 5 notes.</div>';
+  const seq=$("#seq");
+  for(const r of SQROWS){
+    const row=document.createElement("div");row.className="sqr";
+    row.innerHTML='<span class="sql">'+r.name+'</span><div class="sqg"></div>';
+    const g=row.querySelector(".sqg");sqCells[r.k]=[];
+    for(let i=0;i<16;i++){const c=document.createElement("button");c.className="sqc"+(i%4===0?" q":"");c.dataset.r=r.k;c.dataset.i=i;c.style.setProperty("--c",r.col);g.appendChild(c);sqCells[r.k].push(c)}
+    seq.appendChild(row);
+  }
+  el.addEventListener("click",e=>{
+    const t=e.target.closest("button");if(!t)return;
+    if(t.id==="sqplay"){toggleStudio();return}
+    if(t.dataset.r){
+      const r=t.dataset.r,i=+t.dataset.i,v=S.seq[r][i];
+      S.seq[r][i]=r==="l"?(v+1)%6:(v?0:1);paintSeq();
+      if(S.seq[r][i]){initAudio();if(AC)playHit(r,S.seq[r][i],AC.currentTime)}
+      if(studioOn)S.sqBest=Math.max(S.sqBest||0,noteCount());
+      return;
+    }
+    const a=t.dataset.sq;if(!a)return;
+    if(a==="slow")S.bpm=Math.max(60,S.bpm-6);else if(a==="fast")S.bpm=Math.min(150,S.bpm+6);
+    else if(a.startsWith("p:")){S.seq=SQPRE[a.slice(2)]();if(studioOn)S.sqBest=Math.max(S.sqBest||0,noteCount())}
+    paintSeq();
+  });
+  setInterval(sqSched,25);
+  paintSeq();
+}
+
 /* ---------- boot ---------- */
-load();initUI();dunInit();
+load();initUI();dunInit();initStudio();
 // offline progress
 {
   const away=Math.min((Date.now()-S.last)/1000,8*3600),c=cps();
