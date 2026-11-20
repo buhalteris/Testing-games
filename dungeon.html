@@ -590,7 +590,7 @@ function loop(now){
   if(S.ups.buyer&&S.opts.buyer){buyT+=dt;if(buyT>.5){buyT=0;
     for(let i=GENS.length-1;i>=0;i--){const g=GENS[i];if(S.seenG[g.id]&&buyGen(g))break}}}
   if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=(45+Math.random()*60)/(1+0.25*(S.lab.luck||0));if(!$("#gold"))spawnGold()}}
-  dunFrame(dt);studioFrame();if(studioOn)S.sqTime=(S.sqTime||0)+dt;
+  dunFrame(dt);studioFrame();if(studioOn&&cur==="studio")S.sqTime=(S.sqTime||0)+dt;
   uiT+=dt;if(uiT>.1){uiT=0;refresh();upd()}
   saveT+=dt;if(saveT>5){saveT=0;save()}
   requestAnimationFrame(loop);
