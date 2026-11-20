@@ -16,6 +16,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 #snd{position:absolute;top:8px;right:10px;display:flex;gap:6px}
 #snd button{width:36px;height:36px;border-radius:50%;border:1px solid var(--panel2);background:var(--panel);font-size:16px;padding:0}
 #snd button.off{opacity:.4}
+#nx{height:6px;border-radius:3px;background:var(--panel2);margin:8px auto 0;width:min(70%,260px);overflow:hidden}
+#nxf{height:100%;width:0;background:var(--acc);border-radius:3px;box-shadow:0 0 10px var(--acc);transition:width .25s linear}
 #rate{color:var(--mut);font-size:14px;min-height:20px}
 #buffs{min-height:22px;font-size:13px;color:var(--acc);font-weight:700}
 #stage{display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:min(34vh,240px);position:relative}
@@ -59,7 +61,7 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 </head>
 <body>
 <div id="app">
-  <div id="top"><div id="snd"><button id="bmus" aria-label="music">🎵</button><button id="bsfx" aria-label="sound effects">🔊</button></div><div id="energy">0</div><div id="rate"></div><div id="buffs"></div></div>
+  <div id="top"><div id="snd"><button id="bmus" aria-label="music">🎵</button><button id="bsfx" aria-label="sound effects">🔊</button></div><div id="energy">0</div><div id="rate"></div><div id="buffs"></div><div id="nx" hidden title="Progress to your next unlock"><div id="nxf"></div></div></div>
   <div id="stage"><button id="orb" aria-label="tap"></button></div>
   <div id="panel">
     <div class="tab" id="t-build"></div>
@@ -253,9 +255,32 @@ function upd(){
   // hue by progress
   const h=(220+Math.max(0,Math.log10(S.life+1))*28+S.asc*40)%360;
   document.documentElement.style.setProperty("--h",h.toFixed(0));
+  updNext();
   updTabs();
   if(cur==="asc"||cur==="stats")renderStatic();
 }
+/* ---------- next-unlock bar (shows progress only, never what it is) ---------- */
+const TABTH=[12,60,400,1e6];
+let nxPrev=-1,nxNext=-1;
+function nextUnlock(){
+  let prev=0,next=Infinity;
+  const add=(th,reachable)=>{if(th<=S.life){if(th>prev)prev=th}else if(reachable&&th<next)next=th};
+  TABTH.forEach(t=>add(t,true));
+  GENS.forEach(g=>add(g.base*0.6,true));
+  UPS.forEach(u=>add(u.cost*0.25,!S.ups[u.id]&&!S.seenU[u.id]&&(!u.req||u.req())));
+  return [prev,next];
+}
+function updNext(){
+  const [p,n]=nextUnlock(),box=$("#nx");
+  if(n===Infinity){box.hidden=true;return}
+  box.hidden=false;
+  const f=$("#nxf");
+  if(p!==nxPrev||n!==nxNext){nxPrev=p;nxNext=n;f.style.transition="none";f.style.width="0%";void f.offsetWidth;f.style.transition=""}
+  const lo=Math.log(Math.max(p,1)),hi=Math.log(n),v=Math.log(Math.max(S.life,1));
+  const pct=Math.max(0,Math.min(1,(v-lo)/(hi-lo)));
+  f.style.width=(pct*100).toFixed(1)+"%";
+}
+
 let lastStatic="";
 function renderStatic(){
   let html="";
