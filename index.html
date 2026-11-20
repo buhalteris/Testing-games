@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b0d1a">
 <title>Spark — a game that grows</title>
 <style>
-:root{--h:220;--bg:hsl(var(--h) 45% 8%);--panel:hsl(var(--h) 35% 14%);--panel2:hsl(var(--h) 35% 19%);--acc:hsl(calc(var(--h) + 120) 90% 62%);--txt:#eef1ff;--mut:#8f97bd}
+:root{color-scheme:dark;--h:220;--bg:hsl(var(--h) 45% 8%);--panel:hsl(var(--h) 35% 14%);--panel2:hsl(var(--h) 35% 19%);--acc:hsl(calc(var(--h) + 120) 90% 62%);--txt:#eef1ff;--mut:#8f97bd}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;touch-action:manipulation;transition:background 2s}
 #app{display:flex;flex-direction:column;height:100%;max-width:560px;margin:0 auto;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
@@ -155,9 +155,11 @@ function tap(n,x,y){
 }
 function buyGen(g){const c=gCost(g);if(S.e>=c){S.e-=c;S.g[g.id]++;return true}return false}
 function buyUp(u){if(!S.ups[u.id]&&S.e>=u.cost){S.e-=u.cost;S.ups[u.id]=1;toast("Unlocked: "+u.name);refresh(true);return true}return false}
+const armed={};
+function ask(k,msg){if(armed[k]){armed[k]=0;return true}armed[k]=1;toast(msg);setTimeout(()=>armed[k]=0,4000);return false}
 function ascend(){
   const c=coresOnAscend();if(c<1)return;
-  if(!confirm("Ascend? You restart but gain "+c+" Cores (+"+c*10+"% to everything, permanently).\nFeature upgrades are kept."))return;
+  if(!ask("asc","Ascend: restart, gain "+c+" Cores (+"+c*10+"%). Tap again to confirm"))return;
   S.cores+=c;S.asc++;S.e=0;S.run=0;
   GENS.forEach(g=>S.g[g.id]=0);
   for(const u of UPS)if(!u.keep)delete S.ups[u.id];
@@ -275,7 +277,7 @@ document.addEventListener("click",e=>{
   const t=e.target;
   if(t.id==="ascbtn")ascend();
   if(t.dataset&&t.dataset.o){S.opts[t.dataset.o]=S.opts[t.dataset.o]?0:1;lastStatic="";renderStatic()}
-  if(t.id==="wipe"&&confirm("Delete all progress?")){localStorage.removeItem("spark1");S=fresh();lastStatic="";location.reload()}
+  if(t.id==="wipe"&&ask("wipe","Tap Reset again to delete all progress")){localStorage.removeItem("spark1");S=fresh();lastStatic="";location.reload()}
 });
 
 /* ---------- golden orb ---------- */
