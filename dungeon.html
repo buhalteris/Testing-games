@@ -67,6 +67,10 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
 .sqc.q{background:#3d3756}
 .sqc.on{background:var(--c)}
 .sqc.ph{filter:brightness(1.7);box-shadow:0 0 0 1px #fff inset}
+#app.studio #stage{height:min(24vh,190px)}
+.sv{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--panel2)}
+.sv .nm{flex:1;font-size:14px}
+.sv small{display:block;color:var(--mut);font-size:12px}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
 .big.stop{background:#ff6b6b}
 .hint{color:var(--mut);font-size:13px;text-align:center;padding:14px}
@@ -226,7 +230,7 @@ function showTab(t){
   document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("on",e.id==="t-"+t));
   document.querySelectorAll("#nav button").forEach(b=>{b.classList.toggle("on",b.dataset.t===t);if(b.dataset.t===t)b.classList.remove("new")});
   $("#starthint").style.display="none";
-  if(["asc","stats","ach","lab"].includes(t))renderStatic();if(t==="studio"&&sqCells.k)paintSeq();
+  if(["asc","stats","ach","lab"].includes(t))renderStatic();if(t==="studio"&&sqCells.k)paintSeq();$("#app").classList.toggle("studio",t==="studio");
 }
 const TH={build:12,ups:60,stats:400,ach:5000,studio:25000,asc:1e6,lab:5e6};
 const TABRULE=Object.fromEntries(Object.keys(TH).map(t=>[t,()=>S.life>=TH[t]||(t==="asc"&&S.asc>0)]));
@@ -729,6 +733,15 @@ function paintSeq(){
   $("#bpmv").textContent=S.bpm+" BPM";
   $("#grv").textContent="+"+Math.round(grooveAmt()*100)+"%"+(studioOn?" active":" when playing");
 }
+function renderSaved(){
+  const el=$("#sqsaved"),list=S.sqSaved||[];
+  if(!list.length){el.innerHTML='<div class="hint">No saved beats yet.</div>';return}
+  el.innerHTML=list.map((b,i)=>{
+    let n=0;for(const r in b.seq)for(const v of b.seq[r])if(v)n++;
+    return '<div class="sv"><div class="nm">'+b.name+'<small>'+n+' notes · '+b.bpm+' BPM</small></div>'+
+      '<button class="toggle" data-sq="load:'+i+'">Load</button><button class="toggle" data-sq="del:'+i+'">Delete</button></div>';
+  }).join("");
+}
 function toggleStudio(){
   initAudio();if(!AC)return;
   studioOn=!studioOn;
@@ -743,6 +756,7 @@ function initStudio(){
    '<button class="big" id="sqplay">▶ Play</button>'+
    '<div class="row"><span>Tempo</span><span><button class="toggle" data-sq="slow">−</button> <b id="bpmv"></b> <button class="toggle" data-sq="fast">+</button></span></div>'+
    '<div class="chips"><button class="toggle" data-sq="p:house">House</button><button class="toggle" data-sq="p:hiphop">Hip-hop</button><button class="toggle" data-sq="p:random">Random</button><button class="toggle" data-sq="p:empty">Clear</button></div>'+
+   '<h3>Saved beats</h3><button class="big" data-sq="save">💾 Save current beat</button><div id="sqsaved"></div>'+
    '<div class="hint">Tap squares to make a loop, then press Play. Every note adds +1% to everything (max +50%) while the loop plays. The lead row cycles through 5 notes.</div>';
   const seq=$("#seq");
   for(const r of SQROWS){
@@ -763,12 +777,29 @@ function initStudio(){
       return;
     }
     const a=t.dataset.sq;if(!a)return;
+    if(a==="save"){
+      if(!S.sqSaved)S.sqSaved=[];
+      if(S.sqSaved.length>=12){toast("Beat list full. Delete one first");return}
+      S.sqCount=(S.sqCount||0)+1;
+      S.sqSaved.push({name:"Beat "+S.sqCount,seq:JSON.parse(JSON.stringify(S.seq)),bpm:S.bpm});
+      renderSaved();toast("💾 Saved as Beat "+S.sqCount);save();return;
+    }
+    if(a.startsWith("load:")){
+      const b=(S.sqSaved||[])[+a.slice(5)];if(!b)return;
+      S.seq=JSON.parse(JSON.stringify(b.seq));S.bpm=b.bpm;paintSeq();toast("Loaded "+b.name);
+      if(studioOn)S.sqBest=Math.max(S.sqBest||0,noteCount());return;
+    }
+    if(a.startsWith("del:")){
+      const i=+a.slice(4),b=(S.sqSaved||[])[i];if(!b)return;
+      if(ask("sqdel"+i,"Tap Delete again to remove "+b.name)){S.sqSaved.splice(i,1);renderSaved();save()}
+      return;
+    }
     if(a==="slow")S.bpm=Math.max(60,S.bpm-6);else if(a==="fast")S.bpm=Math.min(150,S.bpm+6);
     else if(a.startsWith("p:")){S.seq=SQPRE[a.slice(2)]();if(studioOn)S.sqBest=Math.max(S.sqBest||0,noteCount())}
     paintSeq();
   });
   setInterval(sqSched,25);
-  paintSeq();
+  paintSeq();renderSaved();
 }
 
 /* ---------- boot ---------- */
