@@ -18,6 +18,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 #snd button.off{opacity:.4}
 #nx{height:6px;border-radius:3px;background:var(--panel2);margin:8px auto 0;width:min(70%,260px);overflow:hidden}
 #nxf{height:100%;width:0;background:var(--acc);border-radius:3px;box-shadow:0 0 10px var(--acc);transition:width .25s linear}
+#t-ach .card,#t-lab .card{animation:none}
+.card.lock{opacity:.45;cursor:default}
+.card.done{border-color:var(--acc)}
 #rate{color:var(--mut);font-size:14px;min-height:20px}
 #buffs{min-height:22px;font-size:13px;color:var(--acc);font-weight:700}
 #stage{display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:min(34vh,240px);position:relative}
@@ -68,11 +71,15 @@ h3{margin:12px 4px 8px;font-size:13px;color:var(--mut);text-transform:uppercase;
     <div class="tab" id="t-ups"></div>
     <div class="tab" id="t-asc"></div>
     <div class="tab" id="t-stats"></div>
+    <div class="tab" id="t-ach"></div>
+    <div class="tab" id="t-lab"></div>
     <div class="hint" id="starthint">Tap the orb…</div>
   </div>
   <div id="nav">
     <button data-t="build" hidden><span>⚙️</span>Build</button>
     <button data-t="ups" hidden><span>⬆️</span>Upgrades</button>
+    <button data-t="lab" hidden><span>🔬</span>Lab</button>
+    <button data-t="ach" hidden><span>🏆</span>Awards</button>
     <button data-t="asc" hidden><span>🌌</span>Ascend</button>
     <button data-t="stats" hidden><span>📊</span>Stats</button>
   </div>
@@ -128,7 +135,7 @@ UPS.sort((a,b)=>a.cost-b.cost);
 
 /* ---------- state ---------- */
 const fresh=()=>({e:0,run:0,life:0,g:Object.fromEntries(GENS.map(g=>[g.id,0])),ups:{},seenG:{},seenU:{},
-  cores:0,taps:0,asc:0,tabs:{},opts:{auto:1,buyer:1,music:1,sfx:1},last:Date.now(),t0:Date.now()});
+  cores:0,taps:0,lab:{},ach:{},golds:0,asc:0,tabs:{},opts:{auto:1,buyer:1,music:1,sfx:1},last:Date.now(),t0:Date.now()});
 let S=fresh();
 function load(){
   try{
@@ -142,13 +149,13 @@ function save(){S.last=Date.now();try{localStorage.setItem("spark1",JSON.stringi
 let frenzy=0; // seconds left
 const totalGens=()=>GENS.reduce((a,g)=>a+S.g[g.id],0);
 const coreMult=()=>1+S.cores*0.1;
-function allMult(){let m=coreMult();for(const u of UPS)if(S.ups[u.id]&&u.all)m*=u.all;return m*(frenzy>0?7:1)}
-function genMult(id){let m=1;for(const u of UPS)if(S.ups[u.id]&&u.gen&&u.gen[0]===id)m*=u.gen[1];return m}
+function allMult(){let m=coreMult()*(1+0.02*achCount());for(const u of UPS)if(S.ups[u.id]&&u.all)m*=u.all;return m*(frenzy>0?7:1)}
+function genMult(id){let m=1+0.2*(S.lab.heat||0);for(const u of UPS)if(S.ups[u.id]&&u.gen&&u.gen[0]===id)m*=u.gen[1];return m}
 function cps(){let t=0;for(const g of GENS)t+=S.g[g.id]*g.cps*genMult(g.id);return t*allMult()}
 function tapPower(){
   let m=1,pc=0;
   for(const u of UPS)if(S.ups[u.id]){if(u.tap)m*=u.tap;if(u.tapcps)pc+=u.tapcps}
-  return m*allMult()+cps()*pc;
+  return m*allMult()*Math.pow(1.5,S.lab.tapc||0)+cps()*pc;
 }
 const gCost=g=>Math.ceil(g.base*Math.pow(1.15,S.g[g.id]));
 const coresOnAscend=()=>Math.floor(Math.sqrt(S.run/1e6));
@@ -166,7 +173,7 @@ function ask(k,msg){if(armed[k]){armed[k]=0;return true}armed[k]=1;toast(msg);se
 function ascend(){
   const c=coresOnAscend();if(c<1)return;
   if(!ask("asc","Ascend: restart, gain "+c+" Cores (+"+c*10+"%). Tap again to confirm"))return;
-  S.cores+=c;S.asc++;S.e=0;S.run=0;
+  S.cores+=c;S.asc++;S.e=0;S.run=0;S.lab={};
   GENS.forEach(g=>S.g[g.id]=0);
   for(const u of UPS)if(!u.keep)delete S.ups[u.id];
   S.seenG={};S.seenU={};
@@ -211,10 +218,11 @@ function showTab(t){
   document.querySelectorAll(".tab").forEach(e=>e.classList.toggle("on",e.id==="t-"+t));
   document.querySelectorAll("#nav button").forEach(b=>{b.classList.toggle("on",b.dataset.t===t);if(b.dataset.t===t)b.classList.remove("new")});
   $("#starthint").style.display="none";
-  if(t==="asc"||t==="stats")renderStatic();
+  if(["asc","stats","ach","lab"].includes(t))renderStatic();
 }
-const TABRULE={build:()=>S.life>=12,ups:()=>S.life>=60,stats:()=>S.life>=400,asc:()=>S.life>=1e6||S.asc>0};
-const TABMSG={build:"⚙️ Generators unlocked!",ups:"⬆️ Upgrades unlocked!",stats:"📊 Stats unlocked!",asc:"🌌 Ascension unlocked!"};
+const TH={build:12,ups:60,stats:400,ach:5000,asc:1e6,lab:5e6};
+const TABRULE=Object.fromEntries(Object.keys(TH).map(t=>[t,()=>S.life>=TH[t]||(t==="asc"&&S.asc>0)]));
+const TABMSG={build:"⚙️ Generators unlocked!",ups:"⬆️ Upgrades unlocked!",stats:"📊 Stats unlocked!",asc:"🌌 Ascension unlocked!",ach:"🏆 Achievements unlocked!",lab:"🔬 Laboratory unlocked!"};
 function updTabs(){
   for(const t in TABRULE){
     const b=document.querySelector('#nav button[data-t="'+t+'"]');
@@ -226,6 +234,7 @@ function updTabs(){
   }
 }
 function refresh(){ // reveal logic
+  checkAch();
   for(const g of GENS)if(!S.seenG[g.id]&&S.life>=g.base*0.6)S.seenG[g.id]=1;
   for(const u of UPS)if(!S.ups[u.id]&&!S.seenU[u.id]&&S.life>=u.cost*0.25&&(!u.req||u.req())){S.seenU[u.id]=1;
     const b=document.querySelector('#nav button[data-t="ups"]');if(cur!=="ups"&&!b.hidden)b.classList.add("new")}
@@ -257,17 +266,42 @@ function upd(){
   document.documentElement.style.setProperty("--h",h.toFixed(0));
   updNext();
   updTabs();
-  if(cur==="asc"||cur==="stats")renderStatic();
+  if(["asc","stats","ach","lab"].includes(cur))renderStatic();
 }
+const LAB=[
+ {id:"tapc",icon:"🔬",name:"Tap Core",desc:"Tap power ×1.5 per level",base:2e6},
+ {id:"heat",icon:"🧊",name:"Heat Sink",desc:"Generators +20% per level",base:5e6},
+ {id:"luck",icon:"🍀",name:"Lucky Charm",desc:"Golden orbs appear 25% sooner per level",base:1e7,max:10}];
+const labCost=l=>Math.ceil(l.base*Math.pow(4,S.lab[l.id]||0));
+function buyLab(id){
+  const l=LAB.find(x=>x.id===id),lv=S.lab[id]||0;if(!l||(l.max&&lv>=l.max))return;
+  const c=labCost(l);if(S.e>=c){S.e-=c;S.lab[id]=lv+1;sfx.up();lastStatic="";renderStatic()}
+}
+const ACH=[
+ {id:"tp1",name:"Warming Up",desc:"Tap 100 times",ok:()=>S.taps>=100},
+ {id:"tp2",name:"Tap Dancer",desc:"Tap 1,000 times",ok:()=>S.taps>=1e3},
+ {id:"tp3",name:"Carpal Tunnel",desc:"Tap 10,000 times",ok:()=>S.taps>=1e4},
+ {id:"g1",name:"Small Fleet",desc:"Own 10 generators",ok:()=>totalGens()>=10},
+ {id:"g2",name:"Industrial",desc:"Own 50 generators",ok:()=>totalGens()>=50},
+ {id:"g3",name:"Megastructure",desc:"Own 150 generators",ok:()=>totalGens()>=150},
+ {id:"gall",name:"Full Roster",desc:"Own at least one of every generator",ok:()=>GENS.every(g=>S.g[g.id]>0)},
+ {id:"l1",name:"Ten Thousand",desc:"Earn 10K energy in total",ok:()=>S.life>=1e4},
+ {id:"l2",name:"Millionaire",desc:"Earn 1M energy in total",ok:()=>S.life>=1e6},
+ {id:"l3",name:"Billionaire",desc:"Earn 1B energy in total",ok:()=>S.life>=1e9},
+ {id:"l4",name:"Trillionaire",desc:"Earn 1T energy in total",ok:()=>S.life>=1e12},
+ {id:"au1",name:"Lucky Find",desc:"Catch a golden orb",ok:()=>S.golds>=1},
+ {id:"au2",name:"Orb Hunter",desc:"Catch 10 golden orbs",ok:()=>S.golds>=10},
+ {id:"as1",name:"Rebirth",desc:"Ascend for the first time",ok:()=>S.asc>=1},
+ {id:"as2",name:"Cycle of Stars",desc:"Ascend 5 times",ok:()=>S.asc>=5},
+ {id:"up1",name:"Tinkerer",desc:"Own 10 upgrades at once",ok:()=>Object.keys(S.ups).length>=10},
+ {id:"lab1",name:"Mad Scientist",desc:"Try every experiment in the Lab",ok:()=>Object.keys(S.lab).length>=3}];
+const achCount=()=>Object.keys(S.ach).length;
+function checkAch(){if(!S.tabs.ach)return;for(const a of ACH)if(!S.ach[a.id]&&a.ok()){S.ach[a.id]=1;toast("🏆 "+a.name);sfx.unlock()}}
 /* ---------- next-unlock bar (shows progress only, never what it is) ---------- */
-const TABTH=[12,60,400,1e6];
 let nxPrev=-1,nxNext=-1;
 function nextUnlock(){
   let prev=0,next=Infinity;
-  const add=(th,reachable)=>{if(th<=S.life){if(th>prev)prev=th}else if(reachable&&th<next)next=th};
-  TABTH.forEach(t=>add(t,true));
-  GENS.forEach(g=>add(g.base*0.6,true));
-  UPS.forEach(u=>add(u.cost*0.25,!S.ups[u.id]&&!S.seenU[u.id]&&(!u.req||u.req())));
+  for(const t in TH){const th=TH[t];if(th<=S.life){if(th>prev)prev=th}else if(th<next)next=th}
   return [prev,next];
 }
 function updNext(){
@@ -297,13 +331,21 @@ function renderStatic(){
     (S.ups.auto?'<h3>Automation</h3><div class="row"><span>Auto-Tapper</span><button class="toggle '+(S.opts.auto?"on":"")+'" data-o="auto">'+(S.opts.auto?"ON":"OFF")+'</button></div>':"")+
     (S.ups.buyer?'<div class="row"><span>Overseer AI</span><button class="toggle '+(S.opts.buyer?"on":"")+'" data-o="buyer">'+(S.opts.buyer?"ON":"OFF")+'</button></div>':"")+
     '<h3>Data</h3><div class="row"><span>Wipe everything</span><button class="toggle" id="wipe">Reset</button></div>';
+  }else if(cur==="ach"){
+    const n=achCount();
+    html='<h3>Achievements</h3><div class="row"><span>Earned</span><b>'+n+' / '+ACH.length+' (+'+n*2+'% to everything)</b></div><div style="height:8px"></div>'+
+      ACH.map(a=>'<div class="card '+(S.ach[a.id]?"done":"lock")+'"><div class="i">'+(S.ach[a.id]?"🏆":"🔒")+'</div><div class="m"><div class="n">'+a.name+'</div><div class="d">'+a.desc+'</div></div></div>').join("");
+  }else if(cur==="lab"){
+    html='<h3>Laboratory</h3><div class="hint">Experiments you can level up again and again. They reset when you ascend.</div>'+
+      LAB.map(l=>{const lv=S.lab[l.id]||0,c=labCost(l),mx=l.max&&lv>=l.max;
+        return '<button class="card '+(!mx&&S.e>=c?"can":"")+'" data-lab="'+l.id+'"><div class="i">'+l.icon+'</div><div class="m"><div class="n">'+l.name+' · Lv '+lv+'</div><div class="d">'+l.desc+'</div></div><div class="c">'+(mx?"MAX":fmt(c))+'</div></button>'}).join("");
   }
   if(html===lastStatic)return;lastStatic=html;
   $("#t-"+cur).innerHTML=html;
 }
 const row=(a,b)=>'<div class="row"><span>'+a+'</span><b>'+b+'</b></div>';
 document.addEventListener("click",e=>{
-  const t=e.target;
+  const t=e.target;const lb=t.closest&&t.closest("[data-lab]");if(lb)buyLab(lb.dataset.lab);
   if(t.id==="ascbtn")ascend();
   if(t.dataset&&t.dataset.o){S.opts[t.dataset.o]=S.opts[t.dataset.o]?0:1;lastStatic="";renderStatic()}
   if(t.id==="wipe"&&ask("wipe","Tap Reset again to delete all progress")){localStorage.removeItem("spark1");S=fresh();lastStatic="";location.reload()}
@@ -317,7 +359,7 @@ function spawnGold(){
   b.style.left=(Math.random()*(r.width-70))+"px";b.style.top=(Math.random()*(r.height-70))+"px";
   const kill=setTimeout(()=>b.remove(),9000);
   b.onpointerdown=e=>{
-    e.preventDefault();sfx.sparkle();clearTimeout(kill);b.remove();
+    e.preventDefault();sfx.sparkle();S.golds++;clearTimeout(kill);b.remove();
     if(Math.random()<.5){const g=Math.max(cps()*90,tapPower()*30);gain(g);toast("⭐ Lucky! +"+fmt(g))}
     else{frenzy=20;toast("🔥 Frenzy! ×7 for 20s")}
     upd();
@@ -334,7 +376,7 @@ function loop(now){
   if(S.ups.auto&&S.opts.auto){autoAcc+=dt*(S.ups.auto2?10:3);const n=Math.floor(autoAcc);if(n){autoAcc-=n;tap(n)}}
   if(S.ups.buyer&&S.opts.buyer){buyT+=dt;if(buyT>.5){buyT=0;
     for(let i=GENS.length-1;i>=0;i--){const g=GENS[i];if(S.seenG[g.id]&&buyGen(g))break}}}
-  if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=45+Math.random()*60;if(!$("#gold"))spawnGold()}}
+  if(S.ups.orbs){goldT-=dt;if(goldT<=0){goldT=(45+Math.random()*60)/(1+0.25*(S.lab.luck||0));if(!$("#gold"))spawnGold()}}
   uiT+=dt;if(uiT>.1){uiT=0;refresh();upd()}
   saveT+=dt;if(saveT>5){saveT=0;save()}
   requestAnimationFrame(loop);
