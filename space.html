@@ -34,7 +34,7 @@ button:active{transform:translateY(1px)}
 <div id="msg">
   <div class="card">
     <h1 id="title">STARFALL</h1>
-    <p id="desc">Steer with the mouse, a finger, or the arrow keys / WASD.<br>Hold click, tap or Space to fire. Your guns lock onto the nearest rock.<br>Shoot the asteroids, dodge the ones you can't. Three hits and you're out.</p>
+    <p id="desc">Steer with the mouse, a finger, or the arrow keys / WASD.<br>Hold click, tap or Space to fire. Guns fire straight ahead, so line up under a rock.<br>Shoot the asteroids, dodge the ones you can't. Three hits and you're out.</p>
     <button id="go">Launch</button>
   </div>
 </div>
@@ -57,7 +57,6 @@ const BEST_KEY = 'starfall-best';
 const BULLET_SPEED = 75;
 const CAM_Z = 8, CAM_Y = 0.8;
 const GUN_SPACING = 0.85;
-const AIM_REACH = 2.2;
 
 // ---------- renderer, scene, camera ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
@@ -218,7 +217,6 @@ function spawnRock() {
     m, r,
     vx: rnd(-1.2, 1.2),
     vy: rnd(-1, 1),
-    track: rnd(0, 0.3),    // how strongly this rock steers toward the ship
     spin: new THREE.Vector3(rnd(-1.5, 1.5), rnd(-1.5, 1.5), rnd(-1.5, 1.5))
   });
 }
@@ -230,44 +228,14 @@ function killRock(j, explode) {
   asteroids.splice(j, 1);
 }
 
-// ---------- weapons: guns lock onto the nearest rock in reach, otherwise fire straight ahead ----------
-function pickTarget() {
-  let target = null, nearestZ = -Infinity;
-  for (const a of asteroids) {
-    const p = a.m.position;
-    if (p.z > -2) continue;
-    if (Math.abs(p.x - ship.position.x) > AIM_REACH || Math.abs(p.y - ship.position.y) > AIM_REACH) continue;
-    if (p.z > nearestZ) { nearestZ = p.z; target = a; }
-  }
-  return target;
-}
-
-// direction from origin to where the rock will be when the bullet gets there
-function aimAt(origin, a) {
-  const p = new THREE.Vector3();
-  const vx = a.vx + (ship.position.x - a.m.position.x) * a.track; // current lateral drift
-  let time = 0;
-  for (let k = 0; k < 3; k++) {
-    p.set(
-      a.m.position.x + vx * time,
-      a.m.position.y + a.vy * time,
-      a.m.position.z + speed * time
-    );
-    time = p.distanceTo(origin) / BULLET_SPEED;
-  }
-  return p.sub(origin).normalize();
-}
-
+// guns fire straight ahead, so the player has to line up under a rock
 function fireVolley() {
-  const target = pickTarget();
   for (const side of [-GUN_SPACING, GUN_SPACING]) {
     const origin = new THREE.Vector3(ship.position.x + side, ship.position.y + 0.05, -1.2);
-    const dir = target ? aimAt(origin, target) : new THREE.Vector3(0, 0, -1);
     const m = new THREE.Mesh(bulletGeo, bulletMat);
     m.position.copy(origin);
-    m.lookAt(origin.clone().add(dir));
     scene.add(m);
-    bullets.push({ m, v: dir.multiplyScalar(BULLET_SPEED), prev: origin.clone(), life: 2.2 });
+    bullets.push({ m, v: new THREE.Vector3(0, 0, -BULLET_SPEED), prev: origin.clone(), life: 2.2 });
   }
 }
 
@@ -397,7 +365,7 @@ function update(dt) {
   if (playing) {
     for (let i = asteroids.length - 1; i >= 0; i--) {
       const a = asteroids[i], p = a.m.position;
-      p.x += (a.vx + (ship.position.x - p.x) * a.track) * dt;
+      p.x += a.vx * dt;
       p.y += a.vy * dt;
       p.z += speed * dt;
       a.m.rotation.x += a.spin.x * dt;
