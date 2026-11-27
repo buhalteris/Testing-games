@@ -69,13 +69,19 @@
     cursor: pointer;
   }
   #overlay button:hover { background: #0ff; color: #000; }
+  canvas { touch-action: none; }
+  @media (max-width: 600px) {
+    #overlay h1 { font-size: 36px; }
+    #help { font-size: 11px; }
+    #hud { font-size: 15px; }
+  }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="hud">Score: <span id="score">0</span> &nbsp; Lives: <span id="lives">3</span> &nbsp; Wave: <span id="wave">1</span></div>
-<div id="help">Arrows / WASD: move &nbsp;|&nbsp; Space: fire &nbsp;|&nbsp; P: pause</div>
+<div id="help">Arrows / WASD: move &nbsp;|&nbsp; Space: fire &nbsp;|&nbsp; P: pause<br>Phone: drag to move (auto-fires) &nbsp;|&nbsp; double-tap to pause</div>
 
 <div id="overlay">
   <h1 id="title">SPACE SHOOTER</h1>
@@ -113,6 +119,33 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
   startBtn.addEventListener('click', startGame);
+
+  // ---- Touch input (phones / tablets) ----
+  // Drag anywhere to move the ship (it sits just above your finger so you can see it).
+  // The ship fires automatically while a finger is touching the screen.
+  const touch = { active: false, x: 0, y: 0 };
+  function setTouch(t) {
+    touch.x = t.clientX;
+    touch.y = t.clientY - 60;
+  }
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touch.active = true;
+    setTouch(e.touches[0]);
+    if (state === 'menu' || state === 'over') startGame();
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches[0]) setTouch(e.touches[0]);
+  }, { passive: false });
+  const endTouch = (e) => {
+    e.preventDefault();
+    if (!e.touches || e.touches.length === 0) touch.active = false;
+  };
+  canvas.addEventListener('touchend', endTouch, { passive: false });
+  canvas.addEventListener('touchcancel', endTouch, { passive: false });
+  // Tap the screen while playing to pause/resume on phones (no P key)
+  canvas.addEventListener('dblclick', () => { if (state === 'playing' || state === 'paused') togglePause(); });
 
   // ---- Game state ----
   let state = 'menu'; // menu | playing | paused | over
@@ -303,6 +336,12 @@
     if (keys.ArrowRight || keys.KeyD) ax += 1;
     if (keys.ArrowUp || keys.KeyW) ay -= 1;
     if (keys.ArrowDown || keys.KeyS) ay += 1;
+    if (touch.active) {
+      // steer toward the finger
+      const dx = touch.x - player.x, dy = touch.y - player.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 6) { ax = dx / d; ay = dy / d; }
+    }
     player.vx += ax * accel * dt;
     player.vy += ay * accel * dt;
     player.vx *= friction;
@@ -314,7 +353,7 @@
 
     // Shooting
     fireCooldown -= dt;
-    if (keys.Space && fireCooldown <= 0) {
+    if ((keys.Space || touch.active) && fireCooldown <= 0) {
       bullets.push({ x: player.x, y: player.y - 18, vy: -620 });
       fireCooldown = 0.22;
     }
