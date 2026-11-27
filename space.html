@@ -649,6 +649,12 @@
     return verts;
   }
 
+  // Difficulty ramps with every wave.
+  // ramp(): multiplier for asteroid speed and spawn rate (capped at 2.2x).
+  // eBullet(): enemy bullet speed for a base value, scaled by difficulty and wave (capped at 1.8x).
+  function ramp() { return Math.min(2.2, 1 + (wave - 1) * 0.07); }
+  function eBullet(base) { return base * diff.bullet * Math.min(1.8, 1 + (wave - 1) * 0.05); }
+
   function spawnAsteroid() {
     const size = pick([3, 2, 1]);
     const r = size === 3 ? 42 : size === 2 ? 24 : 13;
@@ -656,7 +662,7 @@
     const explosive = size >= 2 && wave >= 4 && !metal && Math.random() < 0.15;
     const ice = !metal && !explosive && size < 3 && wave >= 2 && Math.random() < 0.25;
     asteroids.push({
-      x: rand(r, W - r), y: -r, vx: rand(-40, 40), vy: (rand(60, 120) + wave * 8) * (ice ? 1.8 : 1),
+      x: rand(r, W - r), y: -r, vx: rand(-40, 40), vy: rand(60, 120) * ramp() * (ice ? 1.8 : 1),
       r, size, metal, explosive, ice, hp: metal ? 2 : 1, flashT: 0,
       verts: makeAsteroidVerts(r), rot: rand(0, Math.PI * 2), spin: rand(-1.5, 1.5)
     });
@@ -683,6 +689,8 @@
       type, x: type === 'zig' ? rand(120, W - 120) : (fromLeft ? -30 : W + 30),
       y, baseX: 0, vx: (fromLeft ? 1 : -1) * rand(70, 110), baseY: y,
       t: rand(0, 10), fireTimer: rand(0.8, 1.6), r: 16,
+      // from wave 4, some enemies are "elite" and take two hits
+      hp: wave >= 4 && Math.random() < Math.min(0.5, (wave - 3) * 0.1) ? 2 : 1,
       dirX: 0, dirY: 1, diving: false
     });
     if (type === 'zig') enemies[enemies.length - 1].baseX = enemies[enemies.length - 1].x;
@@ -987,7 +995,7 @@
         spawnBoss();
         showBanner('BOSS INCOMING!', '#f80');
       } else {
-        showBanner('WAVE ' + wave, '#0ff');
+        showBanner('WAVE ' + wave + '  •  intensity x' + ramp().toFixed(1), '#0ff');
       }
       updateHud();
     }
@@ -1006,7 +1014,7 @@
 
     // Spawning
     spawnTimer -= dt;
-    const spawnEvery = Math.max(0.35, 1.2 - wave * 0.08) * diff.enemy;
+    const spawnEvery = Math.max(0.3, 1.2 / ramp()) * diff.enemy;
     if (spawnTimer <= 0) {
       spawnAsteroid();
       spawnTimer = spawnEvery * rand(0.7, 1.3);
@@ -1014,7 +1022,7 @@
     enemyTimer -= dt;
     if (enemyTimer <= 0 && wave >= 2) {
       spawnEnemy();
-      enemyTimer = Math.max(2.5, 7 - wave * 0.4) * diff.enemy * rand(0.8, 1.2);
+      enemyTimer = Math.max(2.2, 7 / ramp()) * diff.enemy * rand(0.8, 1.2);
     }
 
     // Boss
@@ -1044,7 +1052,7 @@
       if (boss.fireTimer <= 0 && boss.y >= boss.targetY) {
         for (let k = -2; k <= 2; k++) {
           const a = k * 0.22;
-          const s = 220 * diff.bullet;
+          const s = eBullet(220);
           enemyBullets.push({ x: boss.x, y: boss.y + 50, vx: Math.sin(a) * s, vy: Math.cos(a) * s });
         }
         audio.enemyShot();
@@ -1071,7 +1079,7 @@
         if (e.fireTimer <= 0 && e.x > 0 && e.x < W) {
           const dx = player.x - e.x, dy = player.y - e.y;
           const d = Math.hypot(dx, dy) || 1;
-          const s = 260 * diff.bullet;
+          const s = eBullet(260);
           enemyBullets.push({ x: e.x, y: e.y + 12, vx: dx / d * s, vy: dy / d * s });
           audio.enemyShot();
           e.fireTimer = rand(1.1, 2.0) - Math.min(0.6, wave * 0.05);
@@ -1081,7 +1089,7 @@
         e.x = e.baseX + Math.sin(e.t * 2.2) * 110;
         e.fireTimer -= dt;
         if (e.fireTimer <= 0 && e.y > 0) {
-          enemyBullets.push({ x: e.x, y: e.y + 12, vx: 0, vy: 240 * diff.bullet });
+          enemyBullets.push({ x: e.x, y: e.y + 12, vx: 0, vy: eBullet(240) });
           audio.enemyShot();
           e.fireTimer = rand(1.4, 2.2);
         }
@@ -1092,7 +1100,7 @@
         if (e.fireTimer <= 0 && e.x > 0 && e.x < W) {
           const dx = player.x - e.x, dy = player.y - e.y;
           const d = Math.hypot(dx, dy) || 1;
-          const s = 420 * diff.bullet;
+          const s = eBullet(420);
           enemyBullets.push({ x: e.x, y: e.y + 12, vx: dx / d * s, vy: dy / d * s });
           audio.sniperShot();
           e.fireTimer = 2.6;
@@ -1142,7 +1150,14 @@
         const e = enemies[j];
         if (circleHit(b.x, b.y, 3, e.x, e.y, e.r)) {
           if (!b.pierce) bullets.splice(i, 1);
-          killEnemy(j);
+          if ((e.hp || 1) > 1) {
+            e.hp--;
+            e.flashT = 0.12;
+            audio.metalClank();
+            explode(e.x, e.y, '#fff', 6);
+          } else {
+            killEnemy(j);
+          }
           hit = true;
           break;
         }
@@ -1373,7 +1388,15 @@
     for (const c of coins) drawCoin(c);
     for (const p of pickups) drawPickup(p);
     for (const a of asteroids) drawAsteroid(a);
-    for (const e of enemies) drawEnemy(e);
+    for (const e of enemies) {
+      drawEnemy(e);
+      if ((e.hp || 1) > 1) {
+        ctx.save();
+        ctx.strokeStyle = '#ff0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(e.x, e.y, 22, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
     if (boss) drawBoss();
 
     ctx.fillStyle = '#ff0'; ctx.shadowColor = '#ff0'; ctx.shadowBlur = 8;
