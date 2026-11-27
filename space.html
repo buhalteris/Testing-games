@@ -19,6 +19,7 @@
     width: 100vw;
     height: 100vh;
     background: #02030a;
+    touch-action: none;
   }
   #hud {
     position: fixed;
@@ -82,13 +83,12 @@
     cursor: pointer;
   }
   #overlay button:hover { background: #0ff; color: #000; }
-  canvas { touch-action: none; }
+  .hidden { display: none !important; }
   @media (max-width: 600px) {
     #overlay h1 { font-size: 36px; }
     #help { font-size: 11px; }
     #hud { font-size: 15px; }
   }
-  .hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -114,6 +114,7 @@
   const titleEl = document.getElementById('title');
   const messageEl = document.getElementById('message');
   const startBtn = document.getElementById('startBtn');
+  const soundBtn = document.getElementById('soundBtn');
 
   let W = 0, H = 0;
   function resize() {
@@ -122,6 +123,230 @@
   }
   window.addEventListener('resize', resize);
   resize();
+
+  // ---- Audio ----
+  // Sound effects and a composed background song, all generated with the Web Audio API.
+  const audio = (function () {
+    let ac = null, master = null, musicBus = null, sfxBus = null;
+    let muted = false;
+    let musicTimer = null, nextNoteTime = 0, songPos = 0;
+
+    // ----- Song -----
+    // 118 BPM, 4/4. Each bar has 8 eighth-note slots.
+    // Structure (48 bars, ~100 s):
+    //   Intro (4) > Verse (8) > Chorus (8) > Build-up (4) > Verse 2, higher (8)
+    //   > Bridge in C major (8) > Outro (8, back in A minor)
+    const BPM = 118, EIGHTH = 60 / BPM / 2;
+    const ARP = [0, 1, 2, 1, 0, 2, 1, 2];        // arpeggio order over a 3-note chord
+    const ARP_MARK = -2;                          // lead slot meaning "play arpeggio"
+    const REST = -1;                              // lead slot meaning "silence"
+    const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+    // Chord voicings (MIDI numbers)
+    const Am = [57, 60, 64], F = [53, 57, 60], C = [48, 52, 55], G = [55, 59, 62];
+    const Dm = [50, 53, 57], E = [52, 56, 59], Em = [52, 55, 59];
+
+    const R = [REST, REST, REST, REST, REST, REST, REST, REST];
+    const ARPS = [ARP_MARK, ARP_MARK, ARP_MARK, ARP_MARK, ARP_MARK, ARP_MARK, ARP_MARK, ARP_MARK];
+    const up = (line) => line.map(n => (n > 0 ? n + 12 : n));
+
+    // Verse melody (A minor), one row per bar
+    const verseLead = [
+      [69, 72, 74, 72, 69, 67, 69, REST],
+      [65, 69, 72, 69, 65, 64, 65, REST],
+      [67, 72, 76, 72, 67, 64, 67, REST],
+      [67, 71, 74, 71, 67, 66, 67, REST],
+      [69, 72, 74, 76, 77, 76, 74, 72],
+      [77, 74, 72, 69, 72, REST, 69, 65],
+      [68, 71, 73, 76, 73, 71, 68, REST],
+      [69, REST, REST, REST, 69, REST, REST, REST]
+    ];
+    // Chorus melody (F, G, Am, Em...), brighter and higher
+    const chorusLead = [
+      [77, 77, 76, 74, 72, 74, 76, REST],
+      [79, 76, 74, 71, 74, 71, 67, REST],
+      [72, 76, 79, 76, 72, REST, 74, 72],
+      [71, 67, 64, 67, 71, 74, 71, REST],
+      [72, 77, 76, 77, 79, 77, 76, 74],
+      [74, 71, 67, 71, 74, 79, REST, 74],
+      [76, 74, 72, 69, 72, 74, 76, REST],
+      [76, REST, 75, REST, 76, REST, 80, REST]
+    ];
+    // Bridge melody (C major), rising and falling
+    const bridgeLead = [
+      [72, 74, 76, 79, 76, 74, 72, REST],
+      [69, 72, 74, 76, 74, 72, 69, REST],
+      [77, 76, 74, 72, 74, 77, 76, REST],
+      [74, 71, 67, 71, 74, REST, 79, REST],
+      [72, REST, 76, REST, 79, REST, 84, REST],
+      [83, 79, 76, 79, 72, 74, 76, REST],
+      [77, 76, 74, 72, 71, 69, 71, REST],
+      [72, REST, REST, REST, 67, REST, REST, REST]
+    ];
+
+    // Build a list of bars: each bar has pad chord, bass note, lead line, drum level (0-3)
+    function bars(chords, basses, leads, drums) {
+      return chords.map((c, i) => ({ pad: c, bass: basses[i], lead: leads[i], drums: drums }));
+    }
+
+    const SONG = [].concat(
+      // Intro: pads and bass only
+      bars([Am, F, C, G], [45, 41, 36, 43], [R, R, R, R], 0),
+      // Verse
+      bars([Am, F, C, G, Am, F, E, Am], [45, 41, 36, 43, 45, 41, 40, 45], verseLead, 1),
+      // Chorus
+      bars([F, G, Am, Em, F, G, Am, E], [41, 43, 45, 40, 41, 43, 45, 40], chorusLead, 2),
+      // Build-up: snare roll, arpeggios
+      bars([Dm, E, Am, E], [38, 40, 45, 40], [ARPS, ARPS, ARPS, ARPS], 3),
+      // Verse 2, an octave higher
+      bars([Am, F, C, G, Am, F, E, Am], [45, 41, 36, 43, 45, 41, 40, 45], verseLead.map(up), 2),
+      // Bridge in C major
+      bars([C, Am, F, G, C, Am, F, G], [36, 45, 41, 43, 36, 45, 41, 43], bridgeLead, 2),
+      // Outro: verse melody again with full drums
+      bars([Am, F, C, G, Am, F, E, Am], [45, 41, 36, 43, 45, 41, 40, 45], verseLead, 2)
+    );
+
+    function init() {
+      try {
+        if (!ac) {
+          ac = new (window.AudioContext || window.webkitAudioContext)();
+          master = ac.createGain();
+          master.gain.value = muted ? 0 : 0.8;
+          master.connect(ac.destination);
+          musicBus = ac.createGain();
+          musicBus.gain.value = 0.22;
+          musicBus.connect(master);
+          sfxBus = ac.createGain();
+          sfxBus.gain.value = 0.5;
+          sfxBus.connect(master);
+        }
+        if (ac.state === 'suspended') ac.resume();
+      } catch (e) { ac = null; }
+    }
+
+    function tone(freq, dur, type, vol, dest, when, slideTo) {
+      if (!ac) return;
+      const t = when || ac.currentTime;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(dest);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+
+    function noise(dur, vol, cutoff, dest, when) {
+      if (!ac) return;
+      const t = when || ac.currentTime;
+      const len = Math.floor(ac.sampleRate * dur);
+      const buf = ac.createBuffer(1, len, ac.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = ac.createBufferSource(); src.buffer = buf;
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+      const g = ac.createGain(); g.gain.value = vol;
+      src.connect(f); f.connect(g); g.connect(dest || sfxBus);
+      src.start(t);
+    }
+
+    // ----- Sound effects -----
+    function shoot() { tone(880, 0.09, 'square', 0.12, sfxBus, 0, 330); }
+    function enemyShot() { tone(320, 0.14, 'sawtooth', 0.08, sfxBus, 0, 160); }
+    function explode(size) {
+      noise(0.25 + size * 0.1, 0.25 + size * 0.1, 500 + size * 300);
+      tone(110 - size * 15, 0.3, 'sine', 0.2, sfxBus, 0, 40);
+    }
+    function hit() {
+      noise(0.6, 0.9, 700);
+      tone(160, 0.5, 'sawtooth', 0.25, sfxBus, 0, 40);
+    }
+    function wave() {
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      const t = ac ? ac.currentTime : 0;
+      notes.forEach((n, i) => tone(n, 0.18, 'triangle', 0.2, sfxBus, t + i * 0.08));
+    }
+    function gameOver() {
+      const t = ac ? ac.currentTime : 0;
+      [440, 330, 220, 110].forEach((n, i) => tone(n, 0.5, 'sawtooth', 0.18, sfxBus, t + i * 0.25));
+    }
+
+    // ----- Music playback -----
+    function kick(t) { tone(120, 0.18, 'sine', 0.5, musicBus, t, 40); }
+    function hat(t) { noise(0.03, 0.06, 8000, musicBus, t); }
+    function snare(t, vol) {
+      noise(0.12, vol, 2500, musicBus, t);
+      tone(200, 0.08, 'triangle', 0.12, musicBus, t);
+    }
+
+    // Play one eighth-note slot (i = 0..7) of a bar at time t
+    function playEighth(bar, i, t) {
+      // Pad: chord held for the whole bar
+      if (i === 0) bar.pad.forEach(n => tone(mtof(n), EIGHTH * 8, 'sine', 0.045, musicBus, t));
+
+      // Bass: root and octave on the even eighths
+      if (i % 2 === 0) {
+        tone(mtof(i % 4 === 0 ? bar.bass : bar.bass + 12), EIGHTH * 1.8, 'triangle', 0.3, musicBus, t);
+      }
+
+      // Lead melody or arpeggio
+      const n = bar.lead[i];
+      if (n > 0) tone(mtof(n), EIGHTH * 0.9, 'square', 0.06, musicBus, t);
+      else if (n === ARP_MARK) tone(mtof(bar.pad[ARP[i]] + 12), EIGHTH * 0.9, 'square', 0.05, musicBus, t);
+
+      // Drums
+      if (bar.drums >= 1) {
+        if (i % 4 === 0) kick(t);
+        hat(t);
+      }
+      if (bar.drums === 2 && (i === 2 || i === 6)) snare(t, 0.2);
+      if (bar.drums === 3) snare(t, 0.06 + i * 0.025); // build-up: rising snare roll
+    }
+
+    function musicTick() {
+      if (!ac) return;
+      while (nextNoteTime < ac.currentTime + 0.15) {
+        const bar = SONG[Math.floor(songPos / 8) % SONG.length];
+        playEighth(bar, songPos % 8, nextNoteTime);
+        nextNoteTime += EIGHTH;
+        songPos++;
+      }
+    }
+
+    function startMusic() {
+      if (!ac || musicTimer) return;
+      nextNoteTime = ac.currentTime + 0.05;
+      musicTimer = setInterval(musicTick, 25);
+    }
+
+    function stopMusic() {
+      if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    }
+
+    function restartSong() {
+      songPos = 0;
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      if (master) master.gain.setValueAtTime(muted ? 0 : 0.8, ac.currentTime);
+      return muted;
+    }
+
+    return { init, shoot, enemyShot, explode, hit, wave, gameOver,
+             startMusic, stopMusic, restartSong, toggleMute, isMuted: () => muted };
+  })();
+
+  function refreshSoundBtn() {
+    soundBtn.textContent = audio.isMuted() ? '🔇 Sound off (M)' : '🔊 Sound on (M)';
+  }
+  function onToggleMute() {
+    audio.init();
+    audio.toggleMute();
+    refreshSoundBtn();
+  }
+  soundBtn.addEventListener('click', onToggleMute);
 
   // ---- Input ----
   const keys = {};
@@ -160,141 +385,8 @@
   };
   canvas.addEventListener('touchend', endTouch, { passive: false });
   canvas.addEventListener('touchcancel', endTouch, { passive: false });
-  // Tap the screen while playing to pause/resume on phones (no P key)
+  // Double-tap the screen while playing to pause/resume on phones (no P key)
   canvas.addEventListener('dblclick', () => { if (state === 'playing' || state === 'paused') togglePause(); });
-
-  // ---- Audio (generated in-browser with Web Audio; no files needed) ----
-  const audio = (function () {
-    let ac = null, master = null, musicBus = null, sfxBus = null;
-    let muted = false;
-    let musicTimer = null, nextNoteTime = 0, step = 0;
-    const BPM = 124, EIGHTH = 60 / BPM / 2;
-    // Am - F - C - G, one chord per bar of 8 eighth-notes
-    const roots = [110, 87.31, 130.81, 98];
-    const chords = [
-      [220, 261.63, 329.63],
-      [174.61, 220, 261.63],
-      [261.63, 329.63, 392],
-      [196, 246.94, 293.66]
-    ];
-    const arpPattern = [0, 1, 2, 1, 0, 2, 1, 2];
-
-    function init() {
-      try {
-        if (!ac) {
-          ac = new (window.AudioContext || window.webkitAudioContext)();
-          master = ac.createGain();
-          master.gain.value = muted ? 0 : 0.8;
-          master.connect(ac.destination);
-          musicBus = ac.createGain();
-          musicBus.gain.value = 0.22;
-          musicBus.connect(master);
-          sfxBus = ac.createGain();
-          sfxBus.gain.value = 0.5;
-          sfxBus.connect(master);
-        }
-        if (ac.state === 'suspended') ac.resume();
-      } catch (e) { ac = null; }
-    }
-
-    function tone(freq, dur, type, vol, dest, when, slideTo) {
-      if (!ac) return;
-      const t = when || ac.currentTime;
-      const o = ac.createOscillator(), g = ac.createGain();
-      o.type = type;
-      o.frequency.setValueAtTime(freq, t);
-      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
-      g.gain.setValueAtTime(vol, t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); g.connect(dest);
-      o.start(t); o.stop(t + dur + 0.05);
-    }
-
-    function noise(dur, vol, cutoff) {
-      if (!ac) return;
-      const len = Math.floor(ac.sampleRate * dur);
-      const buf = ac.createBuffer(1, len, ac.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const src = ac.createBufferSource(); src.buffer = buf;
-      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
-      const g = ac.createGain(); g.gain.value = vol;
-      src.connect(f); f.connect(g); g.connect(sfxBus);
-      src.start();
-    }
-
-    // ----- Sound effects -----
-    function shoot() { tone(880, 0.09, 'square', 0.12, sfxBus, 0, 330); }
-    function enemyShot() { tone(320, 0.14, 'sawtooth', 0.08, sfxBus, 0, 160); }
-    function explode(size) {
-      noise(0.25 + size * 0.1, 0.25 + size * 0.1, 500 + size * 300);
-      tone(110 - size * 15, 0.3, 'sine', 0.2, sfxBus, 0, 40);
-    }
-    function hit() {
-      noise(0.6, 0.9, 700);
-      tone(160, 0.5, 'sawtooth', 0.25, sfxBus, 0, 40);
-    }
-    function wave() {
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      const t = ac ? ac.currentTime : 0;
-      notes.forEach((n, i) => tone(n, 0.18, 'triangle', 0.2, sfxBus, t + i * 0.08));
-    }
-    function gameOver() {
-      const t = ac ? ac.currentTime : 0;
-      [440, 330, 220, 110].forEach((n, i) => tone(n, 0.5, 'sawtooth', 0.18, sfxBus, t + i * 0.25));
-    }
-
-    // ----- Music: simple looping synth track -----
-    function playStep(s, t) {
-      const bar = Math.floor(s / 8) % 4;
-      const idx = s % 8;
-      const chord = chords[bar];
-      if (idx % 4 === 0) tone(roots[bar], EIGHTH * 3.5, 'triangle', 0.5, musicBus, t);
-      const note = chord[arpPattern[idx]] * 2;
-      tone(note, EIGHTH * 0.9, 'square', 0.12, musicBus, t);
-      if (idx === 0 || idx === 4) noise(0.04, 0.15, 3000); // soft hat-like tick
-    }
-
-    function musicTick() {
-      if (!ac) return;
-      while (nextNoteTime < ac.currentTime + 0.15) {
-        playStep(step, nextNoteTime);
-        nextNoteTime += EIGHTH;
-        step = (step + 1) % 32;
-      }
-    }
-
-    function startMusic() {
-      if (!ac || musicTimer) return;
-      nextNoteTime = ac.currentTime + 0.05;
-      step = 0;
-      musicTimer = setInterval(musicTick, 25);
-    }
-
-    function stopMusic() {
-      if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
-    }
-
-    function toggleMute() {
-      muted = !muted;
-      if (master) master.gain.setValueAtTime(muted ? 0 : 0.8, ac.currentTime);
-      return muted;
-    }
-
-    return { init, shoot, enemyShot, explode, hit, wave, gameOver, startMusic, stopMusic, toggleMute,
-             isMuted: () => muted };
-  })();
-
-  const soundBtn = document.getElementById('soundBtn');
-  function refreshSoundBtn() {
-    soundBtn.textContent = audio.isMuted() ? '🔇 Sound off (M)' : '🔊 Sound on (M)';
-  }
-  function onToggleMute() {
-    audio.init();
-    audio.toggleMute();
-    refreshSoundBtn();
-  }
-  soundBtn.addEventListener('click', onToggleMute);
 
   // ---- Game state ----
   let state = 'menu'; // menu | playing | paused | over
@@ -303,6 +395,7 @@
   let lastTime = 0;
 
   const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   function makeStars() {
     stars = [];
@@ -342,6 +435,7 @@
     resetGame();
     state = 'playing';
     overlay.classList.add('hidden');
+    audio.restartSong();
     audio.startMusic();
   }
 
@@ -386,38 +480,39 @@
     }
   }
 
+  function makeAsteroidVerts(r) {
+    const verts = [];
+    for (let j = 0; j < 9; j++) {
+      const a = (j / 9) * Math.PI * 2;
+      const rr = r * rand(0.75, 1.15);
+      verts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    return verts;
+  }
+
   function spawnAsteroid() {
     const size = pick([3, 2, 1]); // 3 big, 2 medium, 1 small
     const r = size === 3 ? 42 : size === 2 ? 24 : 13;
     const speed = rand(60, 120) + wave * 8;
-    const verts = [];
-    const n = 9;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const rr = r * rand(0.75, 1.15);
-      verts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
-    }
     asteroids.push({
       x: rand(r, W - r), y: -r, vx: rand(-40, 40), vy: speed,
-      r, size, verts, rot: rand(0, Math.PI * 2), spin: rand(-1.5, 1.5)
+      r, size, verts: makeAsteroidVerts(r), rot: rand(0, Math.PI * 2), spin: rand(-1.5, 1.5)
     });
   }
 
   function spawnEnemy() {
     const fromLeft = Math.random() < 0.5;
+    const y = rand(60, H * 0.4);
     enemies.push({
       x: fromLeft ? -30 : W + 30,
-      y: rand(60, H * 0.4),
+      y: y,
       vx: (fromLeft ? 1 : -1) * rand(70, 110),
-      baseY: 0,
+      baseY: y,
       t: rand(0, 10),
       fireTimer: rand(0.8, 1.6),
       r: 16
     });
-    enemies[enemies.length - 1].baseY = enemies[enemies.length - 1].y;
   }
-
-  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
   function circleHit(ax, ay, ar, bx, by, br) {
     const dx = ax - bx, dy = ay - by, rr = ar + br;
@@ -435,16 +530,10 @@
       for (let k = 0; k < 2; k++) {
         const newSize = a.size - 1;
         const r = newSize === 2 ? 24 : 13;
-        const verts = [];
-        for (let j = 0; j < 9; j++) {
-          const ang = (j / 9) * Math.PI * 2;
-          const rr = r * rand(0.75, 1.15);
-          verts.push([Math.cos(ang) * rr, Math.sin(ang) * rr]);
-        }
         asteroids.push({
           x: a.x, y: a.y,
           vx: a.vx + rand(-90, 90), vy: a.vy + rand(-30, 30),
-          r, size: newSize, verts, rot: rand(0, 6), spin: rand(-2.5, 2.5)
+          r, size: newSize, verts: makeAsteroidVerts(r), rot: rand(0, 6), spin: rand(-2.5, 2.5)
         });
       }
     }
@@ -575,7 +664,7 @@
       if (e.x < -60 || e.x > W + 60) enemies.splice(i, 1);
     }
 
-    // Collisions: player bullets vs asteroids
+    // Collisions: player bullets vs asteroids / enemies
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       let hit = false;
@@ -589,7 +678,6 @@
         }
       }
       if (hit) continue;
-      // vs enemies
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         if (circleHit(b.x, b.y, 3, e.x, e.y, e.r)) {
@@ -639,7 +727,6 @@
       if (dead) { loseLife(); updateHud(); }
     }
 
-    // Keep score display fresh
     updateHud();
   }
 
@@ -727,10 +814,7 @@
     }
     ctx.globalAlpha = 1;
 
-    // Asteroids
     for (const a of asteroids) drawAsteroid(a);
-
-    // Enemies
     for (const e of enemies) drawEnemy(e);
 
     // Player bullets
@@ -749,8 +833,8 @@
     }
     ctx.shadowBlur = 0;
 
-    // Player
-    if (state !== 'over' && (state === 'playing' || state === 'paused')) {
+    // Player (not shown on the game-over screen)
+    if (state === 'playing' || state === 'paused') {
       const flicker = invuln > 0 && Math.floor(invuln * 12) % 2 === 0;
       drawShip(player.x, player.y, flicker);
     }
@@ -765,7 +849,7 @@
 
     if (state === 'playing') {
       update(dt);
-    } else if (state === 'menu' || state === 'paused' || state === 'over') {
+    } else {
       // keep the background drifting for atmosphere
       if (!stars) makeStars();
       for (const s of stars) {
