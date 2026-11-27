@@ -28,6 +28,19 @@
     pointer-events: none;
     text-shadow: 0 0 6px #0ff;
   }
+  #soundBtn {
+    position: fixed;
+    top: 8px;
+    right: 10px;
+    padding: 6px 10px;
+    font-size: 14px;
+    background: rgba(0, 0, 0, 0.4);
+    color: #0ff;
+    border: 1px solid #0ff;
+    border-radius: 6px;
+    cursor: pointer;
+    z-index: 2;
+  }
   #help {
     position: fixed;
     bottom: 10px;
@@ -81,6 +94,7 @@
 <body>
 <canvas id="game"></canvas>
 <div id="hud">Score: <span id="score">0</span> &nbsp; Lives: <span id="lives">3</span> &nbsp; Wave: <span id="wave">1</span></div>
+<button id="soundBtn" type="button">🔊 Sound on (M)</button>
 <div id="help">Arrows / WASD: move &nbsp;|&nbsp; Space: fire &nbsp;|&nbsp; P: pause<br>Phone: drag to move (auto-fires) &nbsp;|&nbsp; double-tap to pause</div>
 
 <div id="overlay">
@@ -115,6 +129,7 @@
     keys[e.code] = true;
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'KeyP' && state === 'playing') togglePause();
+    if (e.code === 'KeyM') onToggleMute();
     if ((e.code === 'Enter' || e.code === 'Space') && (state === 'menu' || state === 'over')) startGame();
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -130,6 +145,7 @@
   }
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    audio.init();
     touch.active = true;
     setTouch(e.touches[0]);
     if (state === 'menu' || state === 'over') startGame();
@@ -146,6 +162,139 @@
   canvas.addEventListener('touchcancel', endTouch, { passive: false });
   // Tap the screen while playing to pause/resume on phones (no P key)
   canvas.addEventListener('dblclick', () => { if (state === 'playing' || state === 'paused') togglePause(); });
+
+  // ---- Audio (generated in-browser with Web Audio; no files needed) ----
+  const audio = (function () {
+    let ac = null, master = null, musicBus = null, sfxBus = null;
+    let muted = false;
+    let musicTimer = null, nextNoteTime = 0, step = 0;
+    const BPM = 124, EIGHTH = 60 / BPM / 2;
+    // Am - F - C - G, one chord per bar of 8 eighth-notes
+    const roots = [110, 87.31, 130.81, 98];
+    const chords = [
+      [220, 261.63, 329.63],
+      [174.61, 220, 261.63],
+      [261.63, 329.63, 392],
+      [196, 246.94, 293.66]
+    ];
+    const arpPattern = [0, 1, 2, 1, 0, 2, 1, 2];
+
+    function init() {
+      try {
+        if (!ac) {
+          ac = new (window.AudioContext || window.webkitAudioContext)();
+          master = ac.createGain();
+          master.gain.value = muted ? 0 : 0.8;
+          master.connect(ac.destination);
+          musicBus = ac.createGain();
+          musicBus.gain.value = 0.22;
+          musicBus.connect(master);
+          sfxBus = ac.createGain();
+          sfxBus.gain.value = 0.5;
+          sfxBus.connect(master);
+        }
+        if (ac.state === 'suspended') ac.resume();
+      } catch (e) { ac = null; }
+    }
+
+    function tone(freq, dur, type, vol, dest, when, slideTo) {
+      if (!ac) return;
+      const t = when || ac.currentTime;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(dest);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+
+    function noise(dur, vol, cutoff) {
+      if (!ac) return;
+      const len = Math.floor(ac.sampleRate * dur);
+      const buf = ac.createBuffer(1, len, ac.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = ac.createBufferSource(); src.buffer = buf;
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+      const g = ac.createGain(); g.gain.value = vol;
+      src.connect(f); f.connect(g); g.connect(sfxBus);
+      src.start();
+    }
+
+    // ----- Sound effects -----
+    function shoot() { tone(880, 0.09, 'square', 0.12, sfxBus, 0, 330); }
+    function enemyShot() { tone(320, 0.14, 'sawtooth', 0.08, sfxBus, 0, 160); }
+    function explode(size) {
+      noise(0.25 + size * 0.1, 0.25 + size * 0.1, 500 + size * 300);
+      tone(110 - size * 15, 0.3, 'sine', 0.2, sfxBus, 0, 40);
+    }
+    function hit() {
+      noise(0.6, 0.9, 700);
+      tone(160, 0.5, 'sawtooth', 0.25, sfxBus, 0, 40);
+    }
+    function wave() {
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      const t = ac ? ac.currentTime : 0;
+      notes.forEach((n, i) => tone(n, 0.18, 'triangle', 0.2, sfxBus, t + i * 0.08));
+    }
+    function gameOver() {
+      const t = ac ? ac.currentTime : 0;
+      [440, 330, 220, 110].forEach((n, i) => tone(n, 0.5, 'sawtooth', 0.18, sfxBus, t + i * 0.25));
+    }
+
+    // ----- Music: simple looping synth track -----
+    function playStep(s, t) {
+      const bar = Math.floor(s / 8) % 4;
+      const idx = s % 8;
+      const chord = chords[bar];
+      if (idx % 4 === 0) tone(roots[bar], EIGHTH * 3.5, 'triangle', 0.5, musicBus, t);
+      const note = chord[arpPattern[idx]] * 2;
+      tone(note, EIGHTH * 0.9, 'square', 0.12, musicBus, t);
+      if (idx === 0 || idx === 4) noise(0.04, 0.15, 3000); // soft hat-like tick
+    }
+
+    function musicTick() {
+      if (!ac) return;
+      while (nextNoteTime < ac.currentTime + 0.15) {
+        playStep(step, nextNoteTime);
+        nextNoteTime += EIGHTH;
+        step = (step + 1) % 32;
+      }
+    }
+
+    function startMusic() {
+      if (!ac || musicTimer) return;
+      nextNoteTime = ac.currentTime + 0.05;
+      step = 0;
+      musicTimer = setInterval(musicTick, 25);
+    }
+
+    function stopMusic() {
+      if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      if (master) master.gain.setValueAtTime(muted ? 0 : 0.8, ac.currentTime);
+      return muted;
+    }
+
+    return { init, shoot, enemyShot, explode, hit, wave, gameOver, startMusic, stopMusic, toggleMute,
+             isMuted: () => muted };
+  })();
+
+  const soundBtn = document.getElementById('soundBtn');
+  function refreshSoundBtn() {
+    soundBtn.textContent = audio.isMuted() ? '🔇 Sound off (M)' : '🔊 Sound on (M)';
+  }
+  function onToggleMute() {
+    audio.init();
+    audio.toggleMute();
+    refreshSoundBtn();
+  }
+  soundBtn.addEventListener('click', onToggleMute);
 
   // ---- Game state ----
   let state = 'menu'; // menu | playing | paused | over
@@ -188,19 +337,23 @@
 
   function startGame() {
     if (state === 'playing') return;
+    audio.init(); // browsers only allow audio after a user gesture like this click
     if (!stars) makeStars();
     resetGame();
     state = 'playing';
     overlay.classList.add('hidden');
+    audio.startMusic();
   }
 
   function togglePause() {
     if (state === 'playing') {
       state = 'paused';
+      audio.stopMusic();
       showOverlay('PAUSED', 'Press P to resume.', 'Resume');
     } else if (state === 'paused') {
       state = 'playing';
       overlay.classList.add('hidden');
+      audio.startMusic();
     }
   }
 
@@ -213,6 +366,8 @@
 
   function gameOver() {
     state = 'over';
+    audio.stopMusic();
+    audio.gameOver();
     showOverlay('GAME OVER', 'Final score: ' + score + '  •  Wave ' + wave, 'Play again');
   }
 
@@ -274,6 +429,7 @@
     const points = a.size * 10;
     score += points;
     explode(a.x, a.y, '#9ab', 14 + a.size * 6);
+    audio.explode(a.size);
     shake = Math.max(shake, a.size * 1.5);
     if (a.size > 1) {
       for (let k = 0; k < 2; k++) {
@@ -297,6 +453,7 @@
   function loseLife() {
     lives--;
     explode(player.x, player.y, '#ff8844', 40);
+    audio.hit();
     shake = 12;
     updateHud();
     if (lives <= 0) {
@@ -356,6 +513,7 @@
     if ((keys.Space || touch.active) && fireCooldown <= 0) {
       bullets.push({ x: player.x, y: player.y - 18, vy: -620 });
       fireCooldown = 0.22;
+      audio.shoot();
     }
 
     // Bullets
@@ -376,6 +534,7 @@
       waveTimer = 0;
       wave++;
       updateHud();
+      audio.wave();
     }
 
     // Spawning
@@ -410,6 +569,7 @@
         const d = Math.hypot(dx, dy) || 1;
         const s = 260;
         enemyBullets.push({ x: e.x, y: e.y + 12, vx: dx / d * s, vy: dy / d * s });
+        audio.enemyShot();
         e.fireTimer = rand(1.1, 2.0) - Math.min(0.6, wave * 0.05);
       }
       if (e.x < -60 || e.x > W + 60) enemies.splice(i, 1);
@@ -437,6 +597,7 @@
           enemies.splice(j, 1);
           score += 100;
           explode(e.x, e.y, '#f55', 30);
+          audio.explode(2);
           shake = Math.max(shake, 5);
           updateHud();
           break;
